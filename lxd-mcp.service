@@ -1,0 +1,31 @@
+[Unit]
+Description=LXD MCP Server - Model Context Protocol server for LXD containers
+After=network.target lxd.service
+Wants=lxd.service
+
+[Service]
+Type=simple
+User=root
+Group=root
+ExecStart=/usr/local/bin/lxd-mcp
+Restart=always
+RestartSec=5
+
+# Environment variables
+# LXD socket path (use if autodetect does not work)
+# Environment="LXD_SOCKET_PATH=/var/lib/lxd/unix.socket"
+
+# Access token for API authentication (RECOMMENDED - use eg. openssl rand -hex 32)
+# Environment="ACCESS_TOKEN=your-secret-token"
+
+# Restrict to specific LXD projects (comma-separated)
+# Environment="LXD_PROJECTS=project1,project2"
+
+# Logging level: debug, info, error
+Environment="LOG_LEVEL=info"
+
+# Server port
+Environment="PORT=3000"
+
+[Install]
+WantedBy=multi-user.target
