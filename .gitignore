@@ -1,0 +1,38 @@
+# Dependencies
+node_modules/
+
+# Build output
+dist/
+
+# Logs
+logs/
+*.log
+
+# Environment
+.env
+.env.local
+
+# TypeScript source maps
+*.map
+
+# IDE
+.vscode/
+.idea/
+.opencode/
+opencode.json
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Test coverage
+coverage/
+
+# OpenSpec
+openspec/
+
+# binaries
+.tgz
+
+# integration test
+test-progress.md

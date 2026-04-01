@@ -1,0 +1,32 @@
+# Source files
+src/
+types/
+
+# Development files
+.git/
+.openspec/
+tests/
+docs/
+
+# Configuration files
+tsconfig*.json
+vitest.config.*
+.eslint*
+.prettier*
+
+# IDE
+.vscode/
+.idea/
+
+# Documentation
+*.md
+!package.json
+
+# OS files
+.DS_Store
+
+# Test coverage
+coverage/
+
+# Build artifacts (we use "files" field in package.json instead)
+*.map
