@@ -16,7 +16,20 @@ export function registerLogsTools(server: McpServer, api: LXDApiLike, logger: Lo
     'lxd_logs',
     {
       title: 'Get LXD Container Logs',
-      description: 'Get log files from a container. Use to list available log files or retrieve their content for debugging container startup issues.',
+      description: [
+        'Get log files from a container. Use to list available log files or retrieve their content for debugging container startup issues.',
+        '',
+        '### Log File Naming Patterns:',
+        '- Log files are stored as separate files in LXD (e.g., <container-name>.stdout, <container-name>.stderr).',
+        '- Use without log_file parameter to first list available log files.',
+        '- Common log file names: "journald", "lxc.conf", "<name>.stdout", "<name>.stderr".',
+        '',
+        '### Retrieving Logs from Running Processes:',
+        '- To check logs from a running server process, first list available logs (omit log_file parameter).',
+        '- Then retrieve the specific log file using the appropriate file name.',
+        '- Poll logs at appropriate intervals to monitor long-running process progress.',
+        '- If no logs exist for a container, returns an empty list.',
+      ].join('\n'),
       inputSchema: z.object({
         name: z.string().describe('Container name'),
         log_file: z.string().optional().describe('Log file name to retrieve (e.g., "journald", "lxc.conf"). If omitted, lists available log files.'),

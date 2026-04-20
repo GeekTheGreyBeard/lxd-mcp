@@ -128,8 +128,8 @@ describe('ScopedLXDApi', () => {
       });
 
       it('createInstanceFromRemote() with allowed project should succeed', async () => {
-        await scopedApi.createInstanceFromRemote({ name: 'new', image: 'alpine/3.20', project: 'test' });
-        expect(mockApi.createInstanceFromRemote).toHaveBeenCalledWith({ name: 'new', image: 'alpine/3.20', project: 'test' });
+        await scopedApi.createInstanceFromRemote({ name: 'new', image: 'alpine/3.21', project: 'test' });
+        expect(mockApi.createInstanceFromRemote).toHaveBeenCalledWith({ name: 'new', image: 'alpine/3.21', project: 'test' });
       });
 
       it('listSnapshots() with disallowed project should throw MCPProjectNotAllowedError', async () => {

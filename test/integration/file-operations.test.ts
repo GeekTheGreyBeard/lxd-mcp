@@ -34,7 +34,7 @@ describe('LXDApi File Operations Integration', () => {
       try {
         await api.createInstanceFromRemote({
           name: TEST_INSTANCE_NAME,
-          image: 'alpine/3.20',
+          image: 'alpine/3.21',
           project: TEST_PROJECT_NAME,
           type: 'container',
           start: true,

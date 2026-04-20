@@ -93,7 +93,7 @@ describe('Integration: Project Namespacing', () => {
       
       await expect(scopedApi.createInstanceFromRemote({
         name: 'test',
-        image: 'alpine/3.20',
+        image: 'alpine/3.21',
         project: 'prod',
       })).rejects.toThrow(MCPProjectNotAllowedError);
     });

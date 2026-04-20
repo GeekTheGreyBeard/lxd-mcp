@@ -172,7 +172,7 @@ describe('LXDMCPClient', () => {
     });
 
     it('createInstance() should validate project', async () => {
-      await expect(client.createInstance({ name: 'new', image: 'alpine/3.20', project: 'prod' })).rejects.toThrow(MCPProjectNotAllowedError);
+      await expect(client.createInstance({ name: 'new', image: 'alpine/3.21', project: 'prod' })).rejects.toThrow(MCPProjectNotAllowedError);
     });
 
     it('listSnapshots() should validate project', async () => {

@@ -54,7 +54,7 @@ describe('Integration: Instance Management', () => {
       try {
         await api.createInstanceFromRemote({
           name: instanceName,
-          image: 'images:alpine/3.20',
+          image: 'images:alpine/3.21',
           start: false, // Don't start to speed up test
         });
       } catch (error) {
@@ -91,7 +91,7 @@ describe('Integration: Instance Management', () => {
       try {
         await api.createInstanceFromRemote({
           name: instanceName,
-          image: 'images:alpine/3.20',
+          image: 'images:alpine/3.21',
           start: false,
         });
       } catch (error) {
@@ -165,7 +165,7 @@ describe('Integration: Instance Management', () => {
       try {
         await api.createInstanceFromRemote({
           name: instanceName,
-          image: 'images:alpine/3.20',
+          image: 'images:alpine/3.21',
           config: {
             'limits.memory': '256MB',
             'limits.cpu': '1',
@@ -198,7 +198,7 @@ describe('Integration: Instance Management', () => {
       try {
         await api.createInstanceFromRemote({
           name: instanceName,
-          image: 'images:alpine/3.20',
+          image: 'images:alpine/3.21',
           start: false,
         });
       } catch (error) {
@@ -221,7 +221,7 @@ describe('Integration: Instance Management', () => {
       try {
         await api.createInstanceFromRemote({
           name: instanceName,
-          image: 'images:alpine/3.20',
+          image: 'images:alpine/3.21',
           start: false,
         });
       } catch (error) {
@@ -262,7 +262,7 @@ describe('Integration: Instance Management', () => {
       try {
         await api.createInstanceFromRemote({
           name: instanceName,
-          image: 'images:alpine/3.20',
+          image: 'images:alpine/3.21',
           start: false,
         });
       } catch (error) {
@@ -300,7 +300,7 @@ describe('Integration: Instance Management', () => {
       try {
         await api.createInstanceFromRemote({
           name: instanceName,
-          image: 'images:alpine/3.20',
+          image: 'images:alpine/3.21',
           start: false,
         });
       } catch (error) {
@@ -340,7 +340,7 @@ describe('Integration: Instance Management', () => {
       try {
         await api.createInstanceFromRemote({
           name: instanceName,
-          image: 'images:alpine/3.20',
+          image: 'images:alpine/3.21',
           start: true,
         });
       } catch (error) {
@@ -380,7 +380,7 @@ describe('Integration: Instance Management', () => {
       try {
         await api.createInstanceFromRemote({
           name: instanceName,
-          image: 'images:alpine/3.20',
+          image: 'images:alpine/3.21',
           start: true,
         });
       } catch (error) {
@@ -419,7 +419,7 @@ describe('Integration: Instance Management', () => {
       try {
         await api.createInstanceFromRemote({
           name: instanceName,
-          image: 'images:alpine/3.20',
+          image: 'images:alpine/3.21',
           start: false,
         });
       } catch (error) {
@@ -464,7 +464,7 @@ describe('Integration: Instance Management', () => {
       try {
         await api.createInstanceFromRemote({
           name: instanceName,
-          image: 'images:alpine/3.20',
+          image: 'images:alpine/3.21',
           start: false,
         });
       } catch (error) {
@@ -497,7 +497,7 @@ describe('Integration: Instance Management', () => {
       try {
         await api.createInstanceFromRemote({
           name: instanceName,
-          image: 'images:alpine/3.20',
+          image: 'images:alpine/3.21',
           start: false,
         });
       } catch (error) {
@@ -530,7 +530,7 @@ describe('Integration: Instance Management', () => {
       try {
         await api.createInstanceFromRemote({
           name: instanceName,
-          image: 'images:alpine/3.20',
+          image: 'images:alpine/3.21',
           start: false,
         });
       } catch (error) {
@@ -556,7 +556,7 @@ describe('Integration: Instance Management', () => {
       try {
         await api.createInstanceFromRemote({
           name: instanceName,
-          image: 'images:alpine/3.20',
+          image: 'images:alpine/3.21',
           start: false,
         });
       } catch (error) {
@@ -590,7 +590,7 @@ describe('Integration: Instance Management', () => {
       try {
         await api.createInstanceFromRemote({
           name: instanceName,
-          image: 'images:alpine/3.20',
+          image: 'images:alpine/3.21',
           start: true,
         });
       } catch (error) {
@@ -624,7 +624,7 @@ describe('Integration: Instance Management', () => {
       try {
         await api.createInstanceFromRemote({
           name: instanceName,
-          image: 'images:alpine/3.20',
+          image: 'images:alpine/3.21',
           start: false,
         });
       } catch (error) {
@@ -655,7 +655,7 @@ describe('Integration: Instance Management', () => {
       try {
         await api.createInstanceFromRemote({
           name: instanceName,
-          image: 'images:alpine/3.20',
+          image: 'images:alpine/3.21',
           start: false,
         });
       } catch (error) {
@@ -691,7 +691,7 @@ describe('Integration: Instance Management', () => {
       try {
         await api.createInstanceFromRemote({
           name: instanceName,
-          image: 'images:alpine/3.20',
+          image: 'images:alpine/3.21',
           start: false,
         });
       } catch (error) {
@@ -715,7 +715,7 @@ describe('Integration: Instance Management', () => {
       try {
         await api.createInstanceFromRemote({
           name: instanceName,
-          image: 'images:alpine/3.20',
+          image: 'images:alpine/3.21',
           config: { 'limits.cpu': '2' },
           start: false,
         });
@@ -738,7 +738,7 @@ describe('Integration: Instance Management', () => {
       try {
         await api.createInstanceFromRemote({
           name: instanceName,
-          image: 'images:alpine/3.20',
+          image: 'images:alpine/3.21',
           start: false,
         });
       } catch (error) {
@@ -760,7 +760,7 @@ describe('Integration: Instance Management', () => {
       try {
         await api.createInstanceFromRemote({
           name: instanceName,
-          image: 'images:alpine/3.20',
+          image: 'images:alpine/3.21',
           start: false,
         });
       } catch (error) {
@@ -788,7 +788,7 @@ describe('Integration: Instance Management', () => {
       try {
         await api.createInstanceFromRemote({
           name: instanceName,
-          image: 'images:alpine/3.20',
+          image: 'images:alpine/3.21',
           start: false,
         });
       } catch (error) {
@@ -810,7 +810,7 @@ describe('Integration: Instance Management', () => {
       try {
         await api.createInstanceFromRemote({
           name: instanceName,
-          image: 'images:alpine/3.20',
+          image: 'images:alpine/3.21',
           start: false,
         });
       } catch (error) {
@@ -838,7 +838,7 @@ describe('Integration: Instance Management', () => {
       try {
         await api.createInstanceFromRemote({
           name: instanceName,
-          image: 'images:alpine/3.20',
+          image: 'images:alpine/3.21',
           start: false,
         });
       } catch (error) {

@@ -23,13 +23,13 @@
   "author": "Hans Ronald Fischer",
   "repository": {
     "type": "git",
-    "url": "https://github.com/edgeseek/lxd-mcp.git"
+    "url": "git+https://github.com/edgeseek/lxd-mcp.git"
   },
   "bugs": {
     "url": "https://github.com/edgeseek/lxd-mcp/issues"
   },
   "bin": {
-    "lxd-mcp": "./dist/index.js"
+    "lxd-mcp": "dist/index.js"
   },
   "exports": {
     ".": {

@@ -299,7 +299,7 @@ describe('LXDApi', () => {
 
         await api.createInstanceFromRemote({
           name: 'new-instance',
-          image: 'alpine/3.20',
+          image: 'alpine/3.21',
         });
         
         expect(mockClient.post).toHaveBeenCalled();
@@ -352,7 +352,7 @@ describe('LXDApi', () => {
 
         await expect(api.createInstanceFromRemote({
           name: 'bad-instance',
-          image: 'alpine/3.20',
+          image: 'alpine/3.21',
         })).rejects.toThrow();
       });
 
@@ -363,7 +363,7 @@ describe('LXDApi', () => {
 
         await api.createInstanceFromRemote({
           name: 'network-instance',
-          image: 'alpine/3.20',
+          image: 'alpine/3.21',
           devices: {
             'eth0': {
               'network': 'lxdbr0',

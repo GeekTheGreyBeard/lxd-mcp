@@ -76,7 +76,7 @@ describe('Integration: Error Handling Tests', () => {
       try {
         await api.createInstanceFromRemote({
           name: instanceName,
-          image: 'images:alpine/3.20',
+          image: 'images:alpine/3.21',
           start: false,
         });
       } catch (error) {
@@ -173,7 +173,7 @@ describe('Integration: Error Handling Tests', () => {
       try {
         await api.createInstanceFromRemote({
           name: instanceName,
-          image: 'images:alpine/3.20',
+          image: 'images:alpine/3.21',
           start: false,
         });
       } catch (error) {
@@ -252,7 +252,7 @@ describe('Integration: Error Handling Tests', () => {
       try {
         await api.createInstanceFromRemote({
           name,
-          image: 'images:alpine/3.20',
+          image: 'images:alpine/3.21',
           config: { 'invalid.config.key': 'value' },
           start: false,
         });
@@ -269,7 +269,7 @@ describe('Integration: Error Handling Tests', () => {
       try {
         await api.createInstanceFromRemote({
           name: instance1,
-          image: 'images:alpine/3.20',
+          image: 'images:alpine/3.21',
           start: false,
         });
         createdInstances.push(instance1);
@@ -317,7 +317,7 @@ describe('Integration: Error Handling Tests', () => {
       try {
         await api.createInstanceFromRemote({
           name,
-          image: 'images:alpine/3.20',
+          image: 'images:alpine/3.21',
           config: { 'limits.memory': 'invalid' },
           start: false,
         });
@@ -333,7 +333,7 @@ describe('Integration: Error Handling Tests', () => {
       try {
         await api.createInstanceFromRemote({
           name,
-          image: 'images:alpine/3.20',
+          image: 'images:alpine/3.21',
           start: false,
         });
       } catch (error) {
@@ -348,7 +348,7 @@ describe('Integration: Error Handling Tests', () => {
       try {
         await api.createInstanceFromRemote({
           name,
-          image: 'images:alpine/3.20',
+          image: 'images:alpine/3.21',
           start: false,
         });
       } catch (error) {
@@ -365,7 +365,7 @@ describe('Integration: Error Handling Tests', () => {
       try {
         await api.createInstanceFromRemote({
           name,
-          image: 'images:alpine/3.20',
+          image: 'images:alpine/3.21',
           start: false,
         });
       } catch (error) {
@@ -381,7 +381,7 @@ describe('Integration: Error Handling Tests', () => {
       try {
         await api.createInstanceFromRemote({
           name,
-          image: 'images:alpine/3.20',
+          image: 'images:alpine/3.21',
           start: false,
         });
       } catch (error) {
@@ -410,7 +410,7 @@ describe('Integration: Error Handling Tests', () => {
       try {
         await api.createInstanceFromRemote({
           name,
-          image: 'images:alpine/3.20',
+          image: 'images:alpine/3.21',
           start: false,
         });
       } catch (error) {
@@ -460,7 +460,7 @@ describe('Integration: Error Handling Tests', () => {
       try {
         await api.createInstanceFromRemote({
           name,
-          image: 'images:alpine/3.20',
+          image: 'images:alpine/3.21',
           start: false,
         });
       } catch (error) {
@@ -489,7 +489,7 @@ describe('Integration: Error Handling Tests', () => {
       try {
         await api.createInstanceFromRemote({
           name,
-          image: 'images:alpine/3.20',
+          image: 'images:alpine/3.21',
           start: false,
         });
       } catch (error) {
@@ -531,7 +531,7 @@ describe('Integration: Error Handling Tests', () => {
       try {
         await api.createInstanceFromRemote({
           name,
-          image: 'images:alpine/3.20',
+          image: 'images:alpine/3.21',
           start: false,
         });
       } catch (error) {
@@ -554,7 +554,7 @@ describe('Integration: Error Handling Tests', () => {
       try {
         await api.createInstanceFromRemote({
           name,
-          image: 'images:alpine/3.20',
+          image: 'images:alpine/3.21',
           start: false,
         });
       } catch (error) {
@@ -576,7 +576,7 @@ describe('Integration: Error Handling Tests', () => {
       try {
         await api.createInstanceFromRemote({
           name,
-          image: 'images:alpine/3.20',
+          image: 'images:alpine/3.21',
           config: { 'limits.memory': true } as any,
           start: false,
         });
@@ -592,7 +592,7 @@ describe('Integration: Error Handling Tests', () => {
       try {
         await api.createInstanceFromRemote({
           name,
-          image: 'images:alpine/3.20',
+          image: 'images:alpine/3.21',
           config: { 'limits.memory': '99999TB' },
           start: false,
         });
@@ -609,7 +609,7 @@ describe('Integration: Error Handling Tests', () => {
       try {
         await api.createInstanceFromRemote({
           name,
-          image: 'images:alpine/3.20',
+          image: 'images:alpine/3.21',
           devices: { 'eth0': { 'type': 'invalid-type' } } as any,
           start: false,
         });
@@ -632,7 +632,7 @@ describe('Integration: Error Handling Tests', () => {
       createdInstances.push(name);
 
       try {
-        await api.createInstanceFromRemote({ name, image: 'images:alpine/3.20', start: false });
+        await api.createInstanceFromRemote({ name, image: 'images:alpine/3.21', start: false });
       } catch (error) {
         if (error instanceof Error && error.message.includes('not found')) {
           console.log('Skipping');
@@ -659,7 +659,7 @@ describe('Integration: Error Handling Tests', () => {
       createdInstances.push(name);
 
       try {
-        await api.createInstanceFromRemote({ name, image: 'images:alpine/3.20', start: false });
+        await api.createInstanceFromRemote({ name, image: 'images:alpine/3.21', start: false });
       } catch (error) {
         if (error instanceof Error && error.message.includes('not found')) {
           console.log('Skipping');

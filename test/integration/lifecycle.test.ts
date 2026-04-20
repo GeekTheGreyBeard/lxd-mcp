@@ -40,7 +40,7 @@ describe('Integration: Lifecycle Tests', () => {
       try {
         await api.createInstanceFromRemote({
           name: instanceName,
-          image: 'images:alpine/3.20',
+          image: 'images:alpine/3.21',
           start: false,
         });
       } catch (error) {
@@ -77,7 +77,7 @@ describe('Integration: Lifecycle Tests', () => {
       try {
         await api.createInstanceFromRemote({
           name: instanceName,
-          image: 'images:alpine/3.20',
+          image: 'images:alpine/3.21',
           start: false,
         });
       } catch (error) {
@@ -107,7 +107,7 @@ describe('Integration: Lifecycle Tests', () => {
       try {
         await api.createInstanceFromRemote({
           name: instanceName,
-          image: 'images:alpine/3.20',
+          image: 'images:alpine/3.21',
           start: false,
         });
       } catch (error) {
@@ -131,7 +131,7 @@ describe('Integration: Lifecycle Tests', () => {
       try {
         await api.createInstanceFromRemote({
           name: instanceName,
-          image: 'images:alpine/3.20',
+          image: 'images:alpine/3.21',
           start: true,
         });
       } catch (error) {
@@ -156,7 +156,7 @@ describe('Integration: Lifecycle Tests', () => {
       createdInstances.push(i1);
 
       try {
-        await api.createInstanceFromRemote({ name: i1, image: 'images:alpine/3.20', start: false });
+        await api.createInstanceFromRemote({ name: i1, image: 'images:alpine/3.21', start: false });
       } catch (error) {
         if (error instanceof Error && error.message.includes('not found')) {
           console.log('Skipping');
@@ -166,7 +166,7 @@ describe('Integration: Lifecycle Tests', () => {
       }
 
       await new Promise(r => setTimeout(r, 3000));
-      try { await api.createInstanceFromRemote({ name: i2, image: 'images:alpine/3.20', start: false }); } 
+      try { await api.createInstanceFromRemote({ name: i2, image: 'images:alpine/3.21', start: false }); } 
       catch { createdInstances.push(i2); }
 
       const instances = await api.listInstances();
@@ -182,7 +182,7 @@ describe('Integration: Lifecycle Tests', () => {
       try {
         await api.createInstanceFromRemote({
           name: instanceName,
-          image: 'images:alpine/3.20',
+          image: 'images:alpine/3.21',
           start: false,
         });
       } catch (error) {
@@ -213,7 +213,7 @@ describe('Integration: Lifecycle Tests', () => {
       try {
         await api.createInstanceFromRemote({
           name: instanceName,
-          image: 'images:alpine/3.20',
+          image: 'images:alpine/3.21',
           start: false,
         });
       } catch (error) {
@@ -243,7 +243,7 @@ describe('Integration: Lifecycle Tests', () => {
       createdInstances.push(name);
 
       try {
-        await api.createInstanceFromRemote({ name, image: 'images:alpine/3.20', start: false });
+        await api.createInstanceFromRemote({ name, image: 'images:alpine/3.21', start: false });
       } catch (error) {
         if (error instanceof Error && error.message.includes('not found')) {
           console.log('Skipping');
@@ -270,7 +270,7 @@ describe('Integration: Lifecycle Tests', () => {
       try {
         await api.createInstanceFromRemote({
           name: sourceName,
-          image: 'images:alpine/3.20',
+          image: 'images:alpine/3.21',
           start: false,
         });
       } catch (error) {
@@ -307,7 +307,7 @@ describe('Integration: Lifecycle Tests', () => {
       createdInstances.push(name);
 
       try {
-        await api.createInstanceFromRemote({ name, image: 'images:alpine/3.20', start: false });
+        await api.createInstanceFromRemote({ name, image: 'images:alpine/3.21', start: false });
       } catch (error) {
         if (error instanceof Error && error.message.includes('not found')) {
           console.log('Skipping');
@@ -326,7 +326,7 @@ describe('Integration: Lifecycle Tests', () => {
       createdInstances.push(name);
 
       try {
-        await api.createInstanceFromRemote({ name, image: 'images:alpine/3.20', start: false });
+        await api.createInstanceFromRemote({ name, image: 'images:alpine/3.21', start: false });
       } catch (error) {
         if (error instanceof Error && error.message.includes('not found')) {
           console.log('Skipping');
@@ -376,7 +376,7 @@ describe('Integration: Lifecycle Tests', () => {
       createdInstances.push(name);
 
       try {
-        await api.createInstanceFromRemote({ name, image: 'images:alpine/3.20', start: false });
+        await api.createInstanceFromRemote({ name, image: 'images:alpine/3.21', start: false });
       } catch (error) {
         if (error instanceof Error && error.message.includes('not found')) {
           console.log('Skipping');
@@ -397,7 +397,7 @@ describe('Integration: Lifecycle Tests', () => {
       createdInstances.push(name);
 
       try {
-        await api.createInstanceFromRemote({ name, image: 'images:alpine/3.20', start: false });
+        await api.createInstanceFromRemote({ name, image: 'images:alpine/3.21', start: false });
       } catch (error) {
         if (error instanceof Error && error.message.includes('not found')) {
           console.log('Skipping');
@@ -417,7 +417,7 @@ describe('Integration: Lifecycle Tests', () => {
       createdInstances.push(name);
 
       try {
-        await api.createInstanceFromRemote({ name, image: 'images:alpine/3.20', start: false });
+        await api.createInstanceFromRemote({ name, image: 'images:alpine/3.21', start: false });
       } catch (error) {
         if (error instanceof Error && error.message.includes('not found')) {
           console.log('Skipping');
