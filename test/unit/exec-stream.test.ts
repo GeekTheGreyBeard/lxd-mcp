@@ -17,7 +17,7 @@ async function fixture(mode:'exit'|'timeout'|'cap'|'reject'|'abrupt'|'eof') {
   if(mode==='reject' && fd==='1') { socket.close(); return; }
   if(fd==='control')socket.on('message',data=>{signal=JSON.parse(data.toString()).signal;code=137;complete=true;channels['1']?.close();channels['2']?.close();});
   if(fd==='0'){
-   if(mode==='exit'){channels['1'].send('hello');channels['2'].send('err');complete=true;channels['1'].close();channels['2'].close();}
+   if(mode==='exit'){channels['1'].send(Buffer.from('hello'));channels['2'].send(Buffer.from('err'));complete=true;channels['1'].close();channels['2'].close();}
    if(mode==='eof'){complete=true;code=0;channels['1'].send(Buffer.alloc(0),()=>channels['1'].terminate());channels['2'].send(Buffer.alloc(0),()=>channels['2'].terminate());}
    if(mode==='abrupt'){complete=true;code=0;channels['1'].terminate();channels['2'].close();}
    if(mode==='cap'){for(let i=0;i<10;i++)channels['1'].send(Buffer.alloc(900000,65));}
