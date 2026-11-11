@@ -397,7 +397,7 @@ describe('LXDApi', () => {
         
         // Mock getInstanceState to return Running state
         vi.mocked(mockClient.get).mockResolvedValueOnce(createMockResponse({ status: 'Running', status_code: 101 }));
-        vi.mocked(mockClient.post).mockResolvedValueOnce(createMockResponse({}));
+        vi.mocked(mockClient.put).mockResolvedValueOnce(createMockResponse({}));
         // Mock subsequent getInstanceState calls for waiting
         vi.mocked(mockClient.get).mockResolvedValueOnce(createMockResponse({ status: 'Stopped', status_code: 102 }));
 
@@ -477,6 +477,7 @@ describe('LXDApi', () => {
       it('3.1.26: should delete instance with force flag', async () => {
         const clientInstance = (api as any).client;
         
+        vi.mocked(clientInstance.get).mockResolvedValueOnce(createMockResponse({status: 'Stopped'}));
         vi.mocked(clientInstance.delete).mockResolvedValueOnce(createMockResponse({}));
 
         await api.deleteInstance('test-instance', undefined, { force: true });
@@ -806,6 +807,7 @@ describe('LXDApi', () => {
       };
 
       vi.mocked(mockClient.get).mockResolvedValueOnce(createMockResponse(mockServerInfo));
+      vi.mocked(mockClient.get).mockResolvedValueOnce(createMockResponse(mockServerInfo.cluster || {enabled: false}));
 
       const result = await api.getServerInfo();
       
@@ -853,6 +855,7 @@ describe('LXDApi', () => {
       };
 
       vi.mocked(mockClient.get).mockResolvedValueOnce(createMockResponse(mockServerInfo));
+      vi.mocked(mockClient.get).mockResolvedValueOnce(createMockResponse(mockServerInfo.cluster || {enabled: false}));
 
       const result = await api.getServerInfo();
       

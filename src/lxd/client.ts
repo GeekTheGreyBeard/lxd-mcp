@@ -16,7 +16,7 @@ import {
   MCPParseError,
 } from './errors.js';
 import { createLogger } from '../logging/index.js';
-import { sanitizeObject } from '../logging/sanitize.js';
+
 
 const log = createLogger('lxd-client');
 
@@ -136,7 +136,17 @@ export class LXDClient {
 
   constructor(config: LXDClientConfig) {
     this.socketPath = config.socketPath;
-    this.defaultTimeout = config.timeout;
+    this.defaultTimeout = config.timeout ?? 30000;
+  }
+
+  getSocketPath(): string { return this.socketPath; }
+
+  private requestPath(path: string): string {
+    if (!path.startsWith('/1.0') || path.startsWith('//') || path.includes('#')) throw new Error('Invalid LXD API path');
+    const url = new URL(path, 'http://localhost');
+    if (url.origin !== 'http://localhost' || !/^\/1\.0(?:\/|$)/.test(url.pathname)) throw new Error('Invalid LXD API path');
+    if (url.searchParams.getAll('project').length > 1) throw new Error('Duplicate project parameter');
+    return url.pathname + url.search;
   }
 
   /**
@@ -151,22 +161,22 @@ export class LXDClient {
     const timeout = options?.timeout ?? this.defaultTimeout;
     
     return new Promise((resolve, reject) => {
-      const url = new URL(path, 'http://localhost');
-      const requestTimeout = timeout ? Math.min(timeout, 120000) : undefined; // Cap at 2 minutes
+      const requestPath = this.requestPath(path);
+      const requestTimeout = Math.min(Math.max(timeout ?? 30000, 1), 130000); // Cap at 2 minutes
       
       // Log the request (sanitizing sensitive data)
       log.debug({
         method,
         path,
         // Sanitize the body before logging to prevent sensitive data exposure
-        body: body ? sanitizeObject(body) : undefined,
+        // Do not log payloads: commands and environment/config values may be secrets.
         timeout: requestTimeout
       }, 'LXD API request');
       
       const options: http.RequestOptions = {
         socketPath: this.socketPath,
         method,
-        path: url.pathname + url.search,
+        path: requestPath,
         headers: {
           'Content-Type': 'application/json',
           'Accept': 'application/json',
@@ -175,24 +185,28 @@ export class LXDClient {
 
       const req = http.request(options, (res) => {
         let data = '';
-        res.on('data', (chunk) => (data += chunk));
+        let bytes = 0;
+        res.on('data', (chunk) => { bytes += Buffer.byteLength(chunk); if (bytes > 16 * 1024 * 1024) { req.destroy(); reject(new MCPConnectionError('LXD response exceeds 16 MiB limit')); return; } data += chunk; });
+        res.on('aborted', () => reject(new MCPConnectionError('LXD response aborted')));
+        res.on('error', (e) => reject(new MCPConnectionError(e.message)));
         res.on('end', () => {
+          clearTimeout(deadline);
           try {
             const parsed = JSON.parse(data);
-            if (res.statusCode && res.statusCode >= 400) {
+            if ((res.statusCode && res.statusCode >= 400) || parsed.type === 'error') {
               // Extract error_code from LXD response if available
               const lxdError = parsed as LXDErrorResponse;
-              const errorCode = lxdError.error_code || res.statusCode;
+              const errorCode = lxdError.error_code || res.statusCode || 500;
               const originalMessage = lxdError.error || JSON.stringify(parsed);
               
               // Create typed error based on HTTP status and error_code
-              const error = createLXDTypedError(res.statusCode, errorCode, originalMessage);
+              const error = createLXDTypedError(res.statusCode || 500, errorCode, originalMessage);
               log.error({
                 method,
                 path,
                 statusCode: res.statusCode,
                 errorCode,
-                message: originalMessage
+                // Server error details may contain secrets; omit from logs.
               }, 'LXD API error response');
               reject(error);
             } else {
@@ -201,7 +215,7 @@ export class LXDClient {
                 path,
                 statusCode: res.statusCode,
                 // Only log response metadata, not the full response body to avoid sensitive data
-                metadata: parsed?.metadata ? sanitizeObject(parsed.metadata) : undefined
+                // Do not log response metadata (guest output, config, and credentials).
               }, 'LXD API success response');
 
               // Extract pagination headers if present
@@ -223,13 +237,19 @@ export class LXDClient {
               method,
               path,
               error: e instanceof Error ? e.message : String(e),
-              rawResponse: data
+              // Response body deliberately omitted from diagnostics.
             }, 'Failed to parse LXD response');
-            reject(new MCPParseError(`Failed to parse LXD response: ${data}`, data));
+            reject(new MCPParseError("Failed to parse LXD response", "[redacted]"));
           }
         });
       });
 
+      const deadline = setTimeout(() => {
+        req.destroy();
+        reject(new MCPConnectionError(`Request timed out after ${requestTimeout}ms; outcome may be unknown`));
+      }, requestTimeout);
+      deadline.unref();
+      req.on('close', () => clearTimeout(deadline));
       // Set up timeout
       if (requestTimeout) {
         req.setTimeout(requestTimeout, () => {
@@ -266,7 +286,7 @@ log.error({
     options?: { timeout?: number }
   ): Promise<LXDResponse<T>> {
     const queryString = buildQueryString(queryParams);
-    const fullPath = path + queryString;
+    const fullPath = queryString ? path + (path.includes('?') ? '&' + queryString.slice(1) : queryString) : path;
     return this.request<T>('GET', fullPath, undefined, options);
   }
 
@@ -298,162 +318,53 @@ log.error({
     return this.request<T>('DELETE', path);
   }
 
-  /**
-   * GET request that returns raw binary data (not JSON)
-   * Used for fetching log file contents
-   */
-  async getRaw(path: string): Promise<Buffer | string> {
+  private async rawRequest(method: string, path: string, body?: Buffer | string,
+    headers: Record<string, string> = {}, options?: { timeout?: number; maxBytes?: number }): Promise<{ buffer: Buffer; headers: Record<string, string> }> {
+    const requestPath = this.requestPath(path);
+    const timeout = Math.min(Math.max(options?.timeout ?? this.defaultTimeout ?? 30000, 1), 130000);
+    const maxBytes = options?.maxBytes ?? 500 * 1024;
+    if (body !== undefined && Buffer.byteLength(body) > maxBytes) throw new Error('File exceeds maximum size limit of 500KB');
     return new Promise((resolve, reject) => {
-      const url = new URL(path, 'http://localhost');
-      
-      const options: http.RequestOptions = {
-        socketPath: this.socketPath,
-        method: 'GET',
-        path: url.pathname + url.search,
-        headers: {
-          'Accept': 'application/octet-stream',
-        },
-      };
-
-      const req = http.request(options, (res) => {
+      const req = http.request({ socketPath: this.socketPath, method, path: requestPath,
+        headers: { Accept: 'application/octet-stream', ...headers } }, res => {
         const chunks: Buffer[] = [];
-        res.on('data', (chunk) => chunks.push(Buffer.from(chunk)));
+        let size = 0;
+        res.on('data', chunk => {
+          size += chunk.length;
+          if (size > maxBytes) { req.destroy(); reject(new MCPConnectionError('LXD raw response exceeds configured size limit')); return; }
+          chunks.push(Buffer.from(chunk));
+        });
+        res.on('aborted', () => reject(new MCPConnectionError('LXD response aborted')));
+        res.on('error', err => reject(new MCPConnectionError(err.message)));
         res.on('end', () => {
-          if (res.statusCode && res.statusCode >= 400) {
-            reject(new MCPConnectionError(`Failed to fetch raw data: HTTP ${res.statusCode}`));
-          } else {
-            const buffer = Buffer.concat(chunks);
-            // Try to return as string first (for text content)
-            const text = buffer.toString('utf-8');
-            // If it looks like binary (contains null bytes), return buffer
-            if (buffer.includes(Buffer.from([0]))) {
-              resolve(buffer);
-            } else {
-              resolve(text);
-            }
-          }
+          clearTimeout(deadline);
+          if (!res.statusCode || res.statusCode >= 400) {
+            reject(new MCPConnectionError(`LXD raw request failed: HTTP ${res.statusCode}`));
+          } else resolve({ buffer: Buffer.concat(chunks), headers: res.headers as Record<string, string> });
         });
       });
-
-      req.on('error', (e) => reject(new MCPConnectionError(`Failed to connect to LXD: ${e.message}`)));
+      const deadline = setTimeout(() => { req.destroy(); reject(new MCPConnectionError(`Request timed out after ${timeout}ms; outcome may be unknown`)); }, timeout);
+      deadline.unref();
+      req.on('close', () => clearTimeout(deadline));
+      req.on('error', err => { clearTimeout(deadline); reject(new MCPConnectionError(`Failed to connect to LXD: ${err.message}`)); });
+      if (body !== undefined) req.write(body);
       req.end();
     });
   }
 
-/**
- * GET request for binary file content from LXD file API
- * Returns the raw buffer content
- */
-async getFileRaw(path: string): Promise<Buffer> {
-  return new Promise((resolve, reject) => {
-    const url = new URL(path, 'http://localhost');
-    
-    const options: http.RequestOptions = {
-      socketPath: this.socketPath,
-      method: 'GET',
-      path: url.pathname + url.search,
-      headers: {
-        'Accept': 'application/octet-stream',
-      },
-    };
+  async getRaw(path: string, options?: { timeout?: number }): Promise<Buffer | string> {
+    return (await this.rawRequest('GET', path, undefined, {}, options)).buffer;
+  }
 
-    const req = http.request(options, (res) => {
-      const chunks: Buffer[] = [];
-      res.on('data', (chunk) => chunks.push(Buffer.from(chunk)));
-      res.on('end', () => {
-        if (res.statusCode && res.statusCode >= 400) {
-          reject(new MCPConnectionError(`Failed to fetch file: HTTP ${res.statusCode}`));
-        } else {
-          const buffer = Buffer.concat(chunks);
-          resolve(buffer);
-        }
-      });
-    });
+  async getFileRaw(path: string): Promise<Buffer> {
+    return (await this.rawRequest('GET', path)).buffer;
+  }
 
-    req.on('error', (e) => reject(new MCPConnectionError(`Failed to connect to LXD: ${e.message}`)));
-    req.end();
-  });
-}
+  async getFileRawWithHeaders(path: string): Promise<{ buffer: Buffer; headers: Record<string, string> }> {
+    return this.rawRequest('GET', path);
+  }
 
-/**
- * GET request for binary file content from LXD file API with headers
- * Returns both the raw buffer content and response headers
- */
-async getFileRawWithHeaders(path: string): Promise<{ buffer: Buffer; headers: Record<string, string> }> {
-  return new Promise((resolve, reject) => {
-    const url = new URL(path, 'http://localhost');
-    
-    const options: http.RequestOptions = {
-      socketPath: this.socketPath,
-      method: 'GET',
-      path: url.pathname + url.search,
-      headers: {
-        'Accept': 'application/octet-stream',
-      },
-    };
-
-    const req = http.request(options, (res) => {
-      const chunks: Buffer[] = [];
-      res.on('data', (chunk) => chunks.push(Buffer.from(chunk)));
-      res.on('end', () => {
-        if (res.statusCode && res.statusCode >= 400) {
-          reject(new MCPConnectionError(`Failed to fetch file: HTTP ${res.statusCode}`));
-        } else {
-          const buffer = Buffer.concat(chunks);
-          // Return buffer and headers
-          resolve({
-            buffer,
-            headers: res.headers as Record<string, string>
-          });
-        }
-      });
-    });
-
-    req.on('error', (e) => reject(new MCPConnectionError(`Failed to connect to LXD: ${e.message}`)));
-    req.end();
-  });
-}
-
-  /**
-   * POST request for binary file content to LXD file API
-   * Sends raw binary data
-   */
   async postFileRaw(path: string, body: Buffer | string, headers: Record<string, string> = {}): Promise<void> {
-    return new Promise((resolve, reject) => {
-      const url = new URL(path, 'http://localhost');
-      
-      const options: http.RequestOptions = {
-        socketPath: this.socketPath,
-        method: 'POST',
-        path: url.pathname + url.search,
-        headers: {
-          'Content-Type': 'application/octet-stream',
-          ...headers,
-        },
-      };
-
-      const req = http.request(options, (res) => {
-        const chunks: Buffer[] = [];
-        res.on('data', (chunk) => chunks.push(Buffer.from(chunk)));
-        res.on('end', () => {
-          if (res.statusCode && res.statusCode >= 400) {
-            const errorBody = Buffer.concat(chunks).toString('utf-8');
-            reject(new MCPConnectionError(`Failed to push file: HTTP ${res.statusCode} - ${errorBody}`));
-          } else {
-            resolve();
-          }
-        });
-      });
-
-      req.on('error', (e) => reject(new MCPConnectionError(`Failed to connect to LXD: ${e.message}`)));
-      
-      // Write the body content
-      if (typeof body === 'string') {
-        req.write(Buffer.from(body));
-      } else {
-        req.write(body);
-      }
-      req.end();
-    });
+    await this.rawRequest('POST', path, body, { 'Content-Type': 'application/octet-stream', ...headers });
   }
 }
