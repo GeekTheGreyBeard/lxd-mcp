@@ -1,3 +1,5 @@
+> **Genesis hardening fork:** See [qualification and limits](docs/genesis/QUALIFICATION.md) for the tested surface and current restrictions. This is trusted cluster-administration software, not an isolation boundary for untrusted agents.
+
 # LXD MCP Server
 
 A Model Context Protocol (MCP) server for managing LXD containers and virtual machines. Enable AI assistants to interact with LXD through a standardized interface for container lifecycle management, image operations, and server monitoring.
@@ -128,16 +130,17 @@ Once configured, try asking your agent:
 | Variable | Default | Description |
 |----------|---------|-------------|
 | `LXD_SOCKET_PATH` | `/var/snap/lxd/common/lxd/unix.socket` | Path to LXD Unix socket |
-| `ACCESS_TOKEN` | (none) | Bearer token for API authentication |
+| `ACCESS_TOKEN` | required | Bearer token required for every deployment, including loopback |
+| `HOST` | `127.0.0.1` | HTTP bind address; keep access inside the management network |
 | `LXD_PROJECTS` | (all) | Comma-separated list of allowed projects |
 | `LOG_LEVEL` | `info` | Logging level: `debug`, `info`, `error` |
 | `PORT` | `3000` | Server HTTP port |
 
 ## Security
 
-**Important**: The server must run on the LXD host due to socket access requirements.
+**Important**: Access to the configured LXD Unix socket grants administrative authority. A deliberately configured temporary SSH socket forward can also be used for qualification; do not expose it publicly.
 
-- Set `ACCESS_TOKEN` to enable bearer token authentication (recommended for network exposure)
+- Set `ACCESS_TOKEN`; startup fails without authentication, including on loopback.
 - Use `LXD_PROJECTS` to restrict access to specific projects
 - See [docs/security.md](docs/security.md) for detailed security guidance
 
