@@ -2,7 +2,9 @@
  * LXD API wrapper for common operations
  */
 
-import http from 'http';
+import { executeRecordedCommand, type ExecResult } from './exec-operation.js';
+import { collectEvents } from './event-stream.js';
+import { safePathSegment, resourceName } from './path.js';
 import { LXDClient, LXDResponse, LXDQueryParams, LXDPaginatedResponse } from './client.js';
 import { MCPConnectionError } from './errors.js';
 import { createLogger } from '../logging/index.js';
@@ -231,11 +233,7 @@ export interface LXDExecRequest {
   'record-output'?: boolean;
 }
 
-export interface LXDExecResponse {
-  exit_code: number;
-  stdout: string;  // Base64 encoded
-  stderr: string; // Base64 encoded
-}
+export interface LXDExecResponse extends ExecResult {}
 
 // Async operation response from LXD
 interface LXDOperationMetadata {
@@ -287,6 +285,19 @@ export class LXDApi implements LXDApiLike {
     this.client = client;
   }
 
+  private async completeOperation(response: LXDResponse<unknown>, project?: string): Promise<void> {
+    if (response.type !== 'async') return;
+    const id = (response.metadata as { id?: string })?.id;
+    if (!id) throw new Error('LXD asynchronous response omitted operation ID; outcome unknown');
+    const params = new URLSearchParams({ timeout: '120' });
+    if (project) params.set('project', project);
+    const result = await this.client.get<{ status_code: number; status: string; err?: string }>(
+      `/1.0/operations/${safePathSegment(id)}/wait?${params}`, undefined, { timeout: 125000 });
+    if (result.metadata.status_code !== 200 || result.metadata.err) {
+      throw new Error(`LXD operation did not succeed: ${result.metadata.err || result.metadata.status || result.metadata.status_code}; operation ${id}`);
+    }
+  }
+
   // Instance operations
 
   async listInstances(project?: string, queryParams?: LXDQueryParams): Promise<LXDPaginatedResult<LXDInstance>> {
@@ -311,7 +322,7 @@ export class LXDApi implements LXDApiLike {
 
     const instances: LXDInstance[] = [];
     for (const instanceUrl of response.metadata) {
-      const name = instanceUrl.split('/').pop();
+      const name = resourceName(instanceUrl);
       if (name) {
         const details = await this.getInstance(name, project);
         instances.push(details);
@@ -326,25 +337,25 @@ export class LXDApi implements LXDApiLike {
 
   async getInstance(name: string, project?: string): Promise<LXDInstance> {
     const path = project 
-      ? `/1.0/instances/${name}?project=${encodeURIComponent(project)}`
-      : `/1.0/instances/${name}`;
+      ? `/1.0/instances/${safePathSegment(name)}?project=${encodeURIComponent(project)}`
+      : `/1.0/instances/${safePathSegment(name)}`;
     const response = await this.client.get<LXDInstance>(path);
     return response.metadata;
   }
 
   async getInstanceState(name: string, project?: string): Promise<LXDInstanceState> {
     const path = project 
-      ? `/1.0/instances/${name}/state?project=${encodeURIComponent(project)}`
-      : `/1.0/instances/${name}/state`;
+      ? `/1.0/instances/${safePathSegment(name)}/state?project=${encodeURIComponent(project)}`
+      : `/1.0/instances/${safePathSegment(name)}/state`;
     const response = await this.client.get<LXDInstanceState>(path);
     return response.metadata;
   }
 
   async startInstance(name: string, project?: string): Promise<void> {
     const path = project 
-      ? `/1.0/instances/${name}/state?project=${encodeURIComponent(project)}`
-      : `/1.0/instances/${name}/state`;
-    await this.client.put(path, { action: 'start', force: true });
+      ? `/1.0/instances/${safePathSegment(name)}/state?project=${encodeURIComponent(project)}`
+      : `/1.0/instances/${safePathSegment(name)}/state`;
+    await this.completeOperation(await this.client.put(path, { action: 'start', force: true }), project);
   }
 
   async stopInstance(name: string, project?: string): Promise<void> {
@@ -354,9 +365,9 @@ export class LXDApi implements LXDApiLike {
     }
 
     const path = project 
-      ? `/1.0/instances/${name}/state?project=${encodeURIComponent(project)}`
-      : `/1.0/instances/${name}/state`;
-    await this.client.put(path, { action: 'stop', force: true });
+      ? `/1.0/instances/${safePathSegment(name)}/state?project=${encodeURIComponent(project)}`
+      : `/1.0/instances/${safePathSegment(name)}/state`;
+    await this.completeOperation(await this.client.put(path, { action: 'stop', force: true }), project);
     
     await this.waitForInstanceStop(name, project);
   }
@@ -374,9 +385,9 @@ export class LXDApi implements LXDApiLike {
 
   async restartInstance(name: string, project?: string): Promise<void> {
     const path = project 
-      ? `/1.0/instances/${name}/state?project=${encodeURIComponent(project)}`
-      : `/1.0/instances/${name}/state`;
-    await this.client.put(path, { action: 'restart', force: true });
+      ? `/1.0/instances/${safePathSegment(name)}/state?project=${encodeURIComponent(project)}`
+      : `/1.0/instances/${safePathSegment(name)}/state`;
+    await this.completeOperation(await this.client.put(path, { action: 'restart', force: true }), project);
   }
 
   async deleteInstance(name: string, project?: string, options: { force?: boolean; autoStop?: boolean } = {}): Promise<void> {
@@ -398,18 +409,14 @@ export class LXDApi implements LXDApiLike {
           }
         }
       } catch (error) {
-        // Proceed with deletion even if state check fails. This can happen if:
-        // - The instance is already stopped/stopped but in an unexpected state
-        // - There's a temporary API error
-        // - The instance no longer exists but we want to ensure cleanup
-        // The delete operation itself will succeed if the instance exists, or fail gracefully if it doesn't.
-        log.warn({ name, error: error instanceof Error ? error.message : String(error) }, 'Instance state check failed, proceeding with delete attempt');
+        // Fail closed when state could not be verified.
+        throw error;
       }
     }
     
     let path = project 
-      ? `/1.0/instances/${name}?project=${encodeURIComponent(project)}`
-      : `/1.0/instances/${name}`;
+      ? `/1.0/instances/${safePathSegment(name)}?project=${encodeURIComponent(project)}`
+      : `/1.0/instances/${safePathSegment(name)}`;
     
     if (force) {
       path += path.includes('?') ? '&force=true' : '?force=true';
@@ -418,7 +425,7 @@ export class LXDApi implements LXDApiLike {
     log.info({ path, force, autoStop }, 'DELETE request path and parameters');
     
     try {
-      await this.client.delete(path);
+      await this.completeOperation(await this.client.delete(path), project);
     } catch (error) {
       log.error({ path, force, autoStop, error: error instanceof Error ? error.message : String(error) }, 'DELETE request failed');
       throw error;
@@ -512,35 +519,7 @@ export class LXDApi implements LXDApiLike {
       type: params.type,
     }, 'Creating instance from remote image');
 
-    const response = await this.client.post(path, instanceData);
-
-    if (response.type === 'async') {
-      const operationId = (response.metadata as { id: string }).id;
-      if (operationId) {
-        for (let i = 0; i < 120; i++) {
-          await new Promise(r => setTimeout(r, 1000));
-          try {
-            const op = await this.client.get<Record<string, unknown>>(`/1.0/operations/${operationId}`);
-            const opData = op.metadata as Record<string, unknown>;
-            const status = (opData.status as string) || '';
-            const statusCode = (opData.status_code as number) || 0;
-
-            if (status === 'Success') {
-              break;
-            }
-
-            if (status === 'Failure' || statusCode >= 400) {
-              const err = (opData.err as string) || 'Unknown error';
-              throw new Error(`Instance creation failed: ${err}`);
-            }
-          } catch (e) {
-            if (e instanceof Error && e.message.startsWith('Instance creation failed:')) {
-              throw e;
-            }
-          }
-        }
-      }
-    }
+    await this.completeOperation(await this.client.post(path, instanceData), params.project);
   }
 
   // Snapshot operations
@@ -559,13 +538,13 @@ export class LXDApi implements LXDApiLike {
 
     const queryString = params.toString();
     const path = queryString 
-      ? `/1.0/instances/${name}/snapshots?${queryString}`
-      : `/1.0/instances/${name}/snapshots`;
+      ? `/1.0/instances/${safePathSegment(name)}/snapshots?${queryString}`
+      : `/1.0/instances/${safePathSegment(name)}/snapshots`;
 
     const response = await this.client.get<string[]>(path);
     const snapshots: LXDSnapshot[] = [];
     for (const snapshotUrl of response.metadata) {
-      const snapshotName = snapshotUrl.split('/').pop();
+      const snapshotName = resourceName(snapshotUrl);
       if (snapshotName) {
         const details = await this.getSnapshot(name, snapshotName, project);
         snapshots.push(details);
@@ -580,34 +559,34 @@ export class LXDApi implements LXDApiLike {
 
   async getSnapshot(instanceName: string, snapshotName: string, project?: string): Promise<LXDSnapshot> {
     const path = project 
-      ? `/1.0/instances/${instanceName}/snapshots/${snapshotName}?project=${encodeURIComponent(project)}`
-      : `/1.0/instances/${instanceName}/snapshots/${snapshotName}`;
+      ? `/1.0/instances/${safePathSegment(instanceName)}/snapshots/${safePathSegment(snapshotName)}?project=${encodeURIComponent(project)}`
+      : `/1.0/instances/${safePathSegment(instanceName)}/snapshots/${safePathSegment(snapshotName)}`;
     const response = await this.client.get<LXDSnapshot>(path);
     return response.metadata;
   }
 
   async createSnapshot(instanceName: string, snapshotName: string, stateful: boolean = false, project?: string): Promise<void> {
     const path = project 
-      ? `/1.0/instances/${instanceName}/snapshots?project=${encodeURIComponent(project)}`
-      : `/1.0/instances/${instanceName}/snapshots`;
-    await this.client.post(path, {
+      ? `/1.0/instances/${safePathSegment(instanceName)}/snapshots?project=${encodeURIComponent(project)}`
+      : `/1.0/instances/${safePathSegment(instanceName)}/snapshots`;
+    await this.completeOperation(await this.client.post(path, {
       name: snapshotName,
       stateful,
-    });
+    }), project);
   }
 
   async restoreSnapshot(instanceName: string, snapshotName: string, project?: string): Promise<void> {
     const path = project 
-      ? `/1.0/instances/${instanceName}?project=${encodeURIComponent(project)}`
-      : `/1.0/instances/${instanceName}`;
-    await this.client.put(path, { restore: snapshotName });
+      ? `/1.0/instances/${safePathSegment(instanceName)}?project=${encodeURIComponent(project)}`
+      : `/1.0/instances/${safePathSegment(instanceName)}`;
+    await this.completeOperation(await this.client.put(path, { restore: snapshotName }), project);
   }
 
   async deleteSnapshot(instanceName: string, snapshotName: string, project?: string): Promise<void> {
     const path = project 
-      ? `/1.0/instances/${instanceName}/snapshots/${snapshotName}?project=${encodeURIComponent(project)}`
-      : `/1.0/instances/${instanceName}/snapshots/${snapshotName}`;
-    await this.client.delete(path);
+      ? `/1.0/instances/${safePathSegment(instanceName)}/snapshots/${safePathSegment(snapshotName)}?project=${encodeURIComponent(project)}`
+      : `/1.0/instances/${safePathSegment(instanceName)}/snapshots/${safePathSegment(snapshotName)}`;
+    await this.completeOperation(await this.client.delete(path), project);
   }
 
   // Exec operations
@@ -615,242 +594,24 @@ export class LXDApi implements LXDApiLike {
   async exec(
     instanceName: string,
     command: string,
-    options: {
-      user?: number;
-      group?: number;
-      cwd?: string;
-      env?: Record<string, string>;
-      timeoutMs?: number;
-    } = {},
+    options: { user?: number; group?: number; cwd?: string; env?: Record<string, string>; timeoutMs?: number } = {},
     project?: string
   ): Promise<LXDExecResponse> {
-    const environment: Record<string, string> = {
-      'HOME': '/root',
-      'USER': 'root',
-      ...options.env,
-    };
-
-    const execRequest: LXDExecRequest = {
-      command: ['/bin/sh', '-c', command],
-      environment,
-      'interactive': false,
-      'record-output': true,
-    };
-
-    if (options.user !== undefined) {
-      execRequest.user = options.user;
-    }
-    if (options.group !== undefined) {
-      execRequest.group = options.group;
-    }
-    if (options.cwd) {
-      execRequest.cwd = options.cwd;
-    }
-
-    const path = project 
-      ? `/1.0/instances/${instanceName}/exec?project=${encodeURIComponent(project)}`
-      : `/1.0/instances/${instanceName}/exec`;
-
-    // Validate and clamp timeout to prevent resource exhaustion from extreme values
-    // Bounds: 1 second minimum (prevents accidental micro-timeouts), 120 seconds maximum (matches LXD client default)
-    const timeoutMs = Math.min(Math.max(options.timeoutMs ?? 30000, 1000), 120000);
-
-    try {
-      const response = await this.client.post<any>(path, execRequest, { timeout: timeoutMs });
-      
-      if (response.type === 'async' && response.metadata?.id) {
-        const operationId = response.metadata.id;
-        
-        const startTime = Date.now();
-        while (Date.now() - startTime < timeoutMs) {
-          await new Promise(resolve => setTimeout(resolve, 500));
-          
-          const opResponse = await this.client.get<any>(`/1.0/operations/${operationId}`);
-          const opData = opResponse.metadata;
-          
-          const isDone = opData?.status_code === 200 || opData?.status_code === 400 || 
-                         opData?.status === 'Success' || opData?.status === 'Failure';
-          
-          if (isDone) {
-            if (opData?.status === 'Failure' || opData?.status_code === 400) {
-              throw new Error(`Command execution failed: ${opData?.err || 'Unknown error'}`);
-            }
-            
-            const exitCode = opData?.metadata?.metadata?.exit_code ?? 0;
-            
-            let stdout = '';
-            let stderr = '';
-            
-            try {
-              const outputMap = opData?.metadata?.metadata?.output as Record<string, string> | undefined;
-              
-              let stdoutFilename: string | undefined;
-              let stderrFilename: string | undefined;
-              
-              if (outputMap) {
-                const stdoutPath = outputMap['1'];
-                const stderrPath = outputMap['2'];
-                
-                if (stdoutPath) {
-                  stdoutFilename = stdoutPath.split('/').pop();
-                }
-                if (stderrPath) {
-                  stderrFilename = stderrPath.split('/').pop();
-                }
-              }
-              
-              if (!stdoutFilename && !stderrFilename) {
-                const logFiles = await this.listExecOutputLogs(instanceName, project);
-                const stdoutFile = logFiles.find(f => f.name.endsWith('.stdout'));
-                const stderrFile = logFiles.find(f => f.name.endsWith('.stderr'));
-                stdoutFilename = stdoutFile?.name;
-                stderrFilename = stderrFile?.name;
-              }
-              
-              if (stdoutFilename) {
-                try {
-                  const stdoutBase64 = await this.getExecOutputLog(instanceName, stdoutFilename, project);
-                  stdout = Buffer.from(stdoutBase64, 'base64').toString('utf-8');
-                } catch {
-                  stdout = '';
-                }
-              }
-              
-              if (stderrFilename) {
-                try {
-                  const stderrBase64 = await this.getExecOutputLog(instanceName, stderrFilename, project);
-                  stderr = Buffer.from(stderrBase64, 'base64').toString('utf-8');
-                } catch {
-                  stderr = '';
-                }
-              }
-              
-              try {
-                if (stdoutFilename) {
-                  await this.deleteExecOutputLog(instanceName, stdoutFilename, project);
-                }
-              } catch {
-              }
-              try {
-                if (stderrFilename) {
-                  await this.deleteExecOutputLog(instanceName, stderrFilename, project);
-                }
-              } catch {
-              }
-            } catch (listError) {
-              stdout = '';
-              stderr = '';
-            }
-            
-            return {
-              exit_code: exitCode,
-              stdout,
-              stderr,
-            };
-          }
-        }
-        
-        return {
-          exit_code: 137,
-          stdout: '',
-          stderr: `Command timed out after ${timeoutMs}ms\n`,
-        };
-      }
-      
-      let stdout = '';
-      let stderr = '';
-      const exitCode = response.metadata?.metadata?.exit_code ?? 0;
-      
-      try {
-        const outputMap = response.metadata?.metadata?.output as Record<string, string> | undefined;
-        
-        let stdoutFilename: string | undefined;
-        let stderrFilename: string | undefined;
-        
-        if (outputMap) {
-          const stdoutPath = outputMap['1'];
-          const stderrPath = outputMap['2'];
-          
-          if (stdoutPath) {
-            stdoutFilename = stdoutPath.split('/').pop();
-          }
-          if (stderrPath) {
-            stderrFilename = stderrPath.split('/').pop();
-          }
-        }
-        
-        if (!stdoutFilename && !stderrFilename) {
-          const logFiles = await this.listExecOutputLogs(instanceName, project);
-          const stdoutFile = logFiles.find(f => f.name.endsWith('.stdout'));
-          const stderrFile = logFiles.find(f => f.name.endsWith('.stderr'));
-          stdoutFilename = stdoutFile?.name;
-          stderrFilename = stderrFile?.name;
-        }
-        
-        if (stdoutFilename) {
-          try {
-            const stdoutBase64 = await this.getExecOutputLog(instanceName, stdoutFilename, project);
-            stdout = Buffer.from(stdoutBase64, 'base64').toString('utf-8');
-          } catch {
-            stdout = '';
-          }
-        }
-        
-        if (stderrFilename) {
-          try {
-            const stderrBase64 = await this.getExecOutputLog(instanceName, stderrFilename, project);
-            stderr = Buffer.from(stderrBase64, 'base64').toString('utf-8');
-          } catch {
-            stderr = '';
-          }
-        }
-        
-        try {
-          if (stdoutFilename) {
-            await this.deleteExecOutputLog(instanceName, stdoutFilename, project);
-          }
-        } catch {
-        }
-        try {
-          if (stderrFilename) {
-            await this.deleteExecOutputLog(instanceName, stderrFilename, project);
-          }
-        } catch {
-        }
-      } catch {
-        stdout = response.metadata?.stdout ? Buffer.from(response.metadata.stdout, 'base64').toString('utf-8') : '';
-        stderr = response.metadata?.stderr ? Buffer.from(response.metadata.stderr, 'base64').toString('utf-8') : '';
-      }
-      
-      return {
-        exit_code: exitCode,
-        stdout,
-        stderr,
-      };
-    } catch (error) {
-      if (error instanceof MCPConnectionError && error.message.includes('timed out')) {
-        return {
-          exit_code: 137,
-          stdout: '',
-          stderr: `Command timed out after ${timeoutMs}ms\n`,
-        };
-      }
-      throw error;
-    }
+    return executeRecordedCommand(this.client, instanceName, command, options, project);
   }
 
   async listExecOutputLogs(instanceName: string, project?: string): Promise<LXDExecOutputLogFile[]> {
     const path = project 
-      ? `/1.0/instances/${instanceName}/logs/exec-output?project=${encodeURIComponent(project)}`
-      : `/1.0/instances/${instanceName}/logs/exec-output`;
+      ? `/1.0/instances/${safePathSegment(instanceName)}/logs/exec-output?project=${encodeURIComponent(project)}`
+      : `/1.0/instances/${safePathSegment(instanceName)}/logs/exec-output`;
     const response = await this.client.get<LXDExecOutputLogFiles>(path);
     return response.metadata.metadata;
   }
 
   async getExecOutputLog(instanceName: string, filename: string, project?: string): Promise<string> {
     const path = project 
-      ? `/1.0/instances/${instanceName}/logs/exec-output/${filename}?project=${encodeURIComponent(project)}`
-      : `/1.0/instances/${instanceName}/logs/exec-output/${filename}`;
+      ? `/1.0/instances/${safePathSegment(instanceName)}/logs/exec-output/${safePathSegment(filename)}?project=${encodeURIComponent(project)}`
+      : `/1.0/instances/${safePathSegment(instanceName)}/logs/exec-output/${safePathSegment(filename)}`;
     const response = await this.client.getRaw(path);
     if (response instanceof Buffer) {
       return response.toString('base64');
@@ -865,15 +626,15 @@ export class LXDApi implements LXDApiLike {
 
   async deleteExecOutputLog(instanceName: string, filename: string, project?: string): Promise<void> {
     const path = project 
-      ? `/1.0/instances/${instanceName}/logs/exec-output/${filename}?project=${encodeURIComponent(project)}`
-      : `/1.0/instances/${instanceName}/logs/exec-output/${filename}`;
+      ? `/1.0/instances/${safePathSegment(instanceName)}/logs/exec-output/${safePathSegment(filename)}?project=${encodeURIComponent(project)}`
+      : `/1.0/instances/${safePathSegment(instanceName)}/logs/exec-output/${safePathSegment(filename)}`;
     await this.client.delete(path);
   }
 
   async pullFile(instanceName: string, path: string, project?: string): Promise<LXDFileContent> {
     const apiPath = project 
-      ? `/1.0/instances/${instanceName}/files?path=${encodeURIComponent(path)}&project=${encodeURIComponent(project)}`
-      : `/1.0/instances/${instanceName}/files?path=${encodeURIComponent(path)}`;
+      ? `/1.0/instances/${safePathSegment(instanceName)}/files?path=${encodeURIComponent(path)}&project=${encodeURIComponent(project)}`
+      : `/1.0/instances/${safePathSegment(instanceName)}/files?path=${encodeURIComponent(path)}`;
     
     const { buffer, headers } = await this.client.getFileRawWithHeaders(apiPath);
     
@@ -893,19 +654,18 @@ export class LXDApi implements LXDApiLike {
 
   async listInstanceLogs(instanceName: string, project?: string): Promise<string[]> {
     const path = project 
-      ? `/1.0/instances/${instanceName}/logs?project=${encodeURIComponent(project)}`
-      : `/1.0/instances/${instanceName}/logs`;
+      ? `/1.0/instances/${safePathSegment(instanceName)}/logs?project=${encodeURIComponent(project)}`
+      : `/1.0/instances/${safePathSegment(instanceName)}/logs`;
     const response = await this.client.get<string[]>(path);
     return response.metadata.map((url: string) => {
-      const parts = url.split('/');
-      return parts[parts.length - 1];
+      return resourceName(url);
     });
   }
 
   async getInstanceLog(instanceName: string, logFile: string, project?: string, lines?: number): Promise<string> {
     let path = project 
-      ? `/1.0/instances/${instanceName}/logs/${logFile}?project=${encodeURIComponent(project)}`
-      : `/1.0/instances/${instanceName}/logs/${logFile}`;
+      ? `/1.0/instances/${safePathSegment(instanceName)}/logs/${safePathSegment(logFile)}?project=${encodeURIComponent(project)}`
+      : `/1.0/instances/${safePathSegment(instanceName)}/logs/${safePathSegment(logFile)}`;
     
     if (lines !== undefined && lines > 0) {
       path += path.includes('?') ? '&' : '?';
@@ -929,8 +689,8 @@ export class LXDApi implements LXDApiLike {
     project?: string
   ): Promise<void> {
     const apiPath = project 
-      ? `/1.0/instances/${instanceName}/files?path=${encodeURIComponent(path)}&project=${encodeURIComponent(project)}`
-      : `/1.0/instances/${instanceName}/files?path=${encodeURIComponent(path)}`;
+      ? `/1.0/instances/${safePathSegment(instanceName)}/files?path=${encodeURIComponent(path)}&project=${encodeURIComponent(project)}`
+      : `/1.0/instances/${safePathSegment(instanceName)}/files?path=${encodeURIComponent(path)}`;
     
     const contentBuffer = Buffer.from(content, 'base64');
     
@@ -966,9 +726,9 @@ export class LXDApi implements LXDApiLike {
     const response = await this.client.get<string[]>(path);
     const images: LXDImage[] = [];
     for (const imageUrl of response.metadata) {
-      const fingerprint = imageUrl.split('/').pop();
+      const fingerprint = resourceName(imageUrl);
       if (fingerprint) {
-        const details = await this.getImage(fingerprint);
+        const details = await this.getImage(fingerprint, project);
         images.push(details);
       }
     }
@@ -979,21 +739,22 @@ export class LXDApi implements LXDApiLike {
     };
   }
 
-  async getImage(fingerprint: string): Promise<LXDImage> {
-    const path = `/1.0/images/${fingerprint}`;
+  async getImage(fingerprint: string, project?: string): Promise<LXDImage> {
+    const path = `/1.0/images/${safePathSegment(fingerprint)}` + (project ? `?project=${encodeURIComponent(project)}` : '');
     const response = await this.client.get<LXDImage>(path);
     return response.metadata;
   }
 
-  async deleteImage(fingerprint: string): Promise<void> {
-    const path = `/1.0/images/${fingerprint}`;
-    await this.client.delete(path);
+  async deleteImage(fingerprint: string, project?: string): Promise<void> {
+    const path = `/1.0/images/${safePathSegment(fingerprint)}` + (project ? `?project=${encodeURIComponent(project)}` : '');
+    await this.completeOperation(await this.client.delete(path), project);
   }
 
   // Alias operations
 
-  async listAliases(queryParams?: LXDQueryParams): Promise<LXDPaginatedResult<LXDAlias>> {
+  async listAliases(queryParams?: LXDQueryParams, project?: string): Promise<LXDPaginatedResult<LXDAlias>> {
     const params = new URLSearchParams();
+    if (project) params.set('project', project);
     if (queryParams?.limit) {
       params.set('limit', queryParams.limit.toString());
     }
@@ -1007,9 +768,9 @@ export class LXDApi implements LXDApiLike {
     const response = await this.client.get<string[]>(path);
     const aliases: LXDAlias[] = [];
     for (const aliasUrl of response.metadata) {
-      const name = aliasUrl.split('/').pop();
+      const name = resourceName(aliasUrl);
       if (name) {
-        const details = await this.getAlias(name);
+        const details = await this.getAlias(name, project);
         aliases.push(details);
       }
     }
@@ -1020,31 +781,32 @@ export class LXDApi implements LXDApiLike {
     };
   }
 
-  async getAlias(name: string): Promise<LXDAlias> {
-    const path = `/1.0/images/aliases/${name}`;
+  async getAlias(name: string, project?: string): Promise<LXDAlias> {
+    const path = `/1.0/images/aliases/${safePathSegment(name)}` + (project ? `?project=${encodeURIComponent(project)}` : '');
     const response = await this.client.get<LXDAlias>(path);
     return response.metadata;
   }
 
-  async createAlias(name: string, description: string, target: string): Promise<void> {
-    const path = '/1.0/images/aliases';
-    await this.client.post(path, {
+  async createAlias(name: string, description: string, target: string, project?: string): Promise<void> {
+    const path = '/1.0/images/aliases' + (project ? `?project=${encodeURIComponent(project)}` : '');
+    await this.completeOperation(await this.client.post(path, {
       name,
       description,
       target,
-    });
+    }), project);
   }
 
-  async deleteAlias(name: string): Promise<void> {
-    const path = `/1.0/images/aliases/${name}`;
-    await this.client.delete(path);
+  async deleteAlias(name: string, project?: string): Promise<void> {
+    const path = `/1.0/images/aliases/${safePathSegment(name)}` + (project ? `?project=${encodeURIComponent(project)}` : '');
+    await this.completeOperation(await this.client.delete(path), project);
   }
 
   // Server operations
 
   async getServerInfo(): Promise<LXDServerInfo> {
     const response = await this.client.get<LXDServerInfo>('/1.0');
-    return response.metadata;
+    const cluster = await this.client.get<LXDClusterInfo>('/1.0/cluster');
+    return { ...response.metadata, cluster: cluster.metadata.enabled ? cluster.metadata : undefined };
   }
 
   async getServerResources(): Promise<LXDServerResources> {
@@ -1072,7 +834,7 @@ export class LXDApi implements LXDApiLike {
     const response = await this.client.get<string[]>(path);
     const projects: LXDProject[] = [];
     for (const projectUrl of response.metadata) {
-      const name = projectUrl.split('/').pop();
+      const name = resourceName(projectUrl);
       if (name) {
         const details = await this.getProject(name);
         projects.push(details);
@@ -1086,7 +848,7 @@ export class LXDApi implements LXDApiLike {
   }
 
   async getProject(name: string): Promise<LXDProject> {
-    const path = `/1.0/projects/${name}`;
+    const path = `/1.0/projects/${safePathSegment(name)}`;
     const response = await this.client.get<LXDProject>(path);
     return response.metadata;
   }
@@ -1114,7 +876,7 @@ export class LXDApi implements LXDApiLike {
     const response = await this.client.get<string[]>(path);
     const profiles: LXDProfile[] = [];
     for (const profileUrl of response.metadata) {
-      const name = profileUrl.split('/').pop();
+      const name = resourceName(profileUrl);
       if (name) {
         const details = await this.getProfile(name, project);
         profiles.push(details);
@@ -1129,8 +891,8 @@ export class LXDApi implements LXDApiLike {
 
   async getProfile(name: string, project?: string): Promise<LXDProfile> {
     const path = project 
-      ? `/1.0/profiles/${name}?project=${encodeURIComponent(project)}`
-      : `/1.0/profiles/${name}`;
+      ? `/1.0/profiles/${safePathSegment(name)}?project=${encodeURIComponent(project)}`
+      : `/1.0/profiles/${safePathSegment(name)}`;
     const response = await this.client.get<LXDProfile>(path);
     return response.metadata;
   }
@@ -1145,7 +907,7 @@ export class LXDApi implements LXDApiLike {
     if (description) {
       profileData.description = description;
     }
-    await this.client.post(path, profileData);
+    await this.completeOperation(await this.client.post(path, profileData), project);
   }
 
   async patchProfile(name: string, updates: {
@@ -1154,9 +916,9 @@ export class LXDApi implements LXDApiLike {
     description?: string;
   }, project?: string): Promise<void> {
     const path = project 
-      ? `/1.0/profiles/${name}?project=${encodeURIComponent(project)}`
-      : `/1.0/profiles/${name}`;
-    await this.client.patch(path, updates);
+      ? `/1.0/profiles/${safePathSegment(name)}?project=${encodeURIComponent(project)}`
+      : `/1.0/profiles/${safePathSegment(name)}`;
+    await this.completeOperation(await this.client.patch(path, updates), project);
   }
 
   async patchInstance(name: string, updates: {
@@ -1165,9 +927,9 @@ export class LXDApi implements LXDApiLike {
     profiles?: string[];
   }, project?: string): Promise<void> {
     const path = project 
-      ? `/1.0/instances/${name}?project=${encodeURIComponent(project)}`
-      : `/1.0/instances/${name}`;
-    await this.client.patch(path, updates);
+      ? `/1.0/instances/${safePathSegment(name)}?project=${encodeURIComponent(project)}`
+      : `/1.0/instances/${safePathSegment(name)}`;
+    await this.completeOperation(await this.client.patch(path, updates), project);
   }
 
   async updateProfile(name: string, updates: {
@@ -1176,16 +938,16 @@ export class LXDApi implements LXDApiLike {
     description?: string;
   }, project?: string): Promise<void> {
     const path = project 
-      ? `/1.0/profiles/${name}?project=${encodeURIComponent(project)}`
-      : `/1.0/profiles/${name}`;
-    await this.client.put(path, updates);
+      ? `/1.0/profiles/${safePathSegment(name)}?project=${encodeURIComponent(project)}`
+      : `/1.0/profiles/${safePathSegment(name)}`;
+    await this.completeOperation(await this.client.put(path, updates), project);
   }
 
   async deleteProfile(name: string, project?: string): Promise<void> {
     const path = project 
-      ? `/1.0/profiles/${name}?project=${encodeURIComponent(project)}`
-      : `/1.0/profiles/${name}`;
-    await this.client.delete(path);
+      ? `/1.0/profiles/${safePathSegment(name)}?project=${encodeURIComponent(project)}`
+      : `/1.0/profiles/${safePathSegment(name)}`;
+    await this.completeOperation(await this.client.delete(path), project);
   }
 
   async addProfileToInstance(instanceName: string, profileName: string, project?: string): Promise<void> {
@@ -1193,9 +955,9 @@ export class LXDApi implements LXDApiLike {
     const profiles = [...instance.profiles, profileName];
     
     const path = project 
-      ? `/1.0/instances/${instanceName}?project=${encodeURIComponent(project)}`
-      : `/1.0/instances/${instanceName}`;
-    await this.client.patch(path, { profiles });
+      ? `/1.0/instances/${safePathSegment(instanceName)}?project=${encodeURIComponent(project)}`
+      : `/1.0/instances/${safePathSegment(instanceName)}`;
+    await this.completeOperation(await this.client.patch(path, { profiles }), project);
   }
 
   async removeProfileFromInstance(instanceName: string, profileName: string, project?: string): Promise<void> {
@@ -1203,9 +965,9 @@ export class LXDApi implements LXDApiLike {
     const profiles = instance.profiles.filter(p => p !== profileName);
     
     const path = project 
-      ? `/1.0/instances/${instanceName}?project=${encodeURIComponent(project)}`
-      : `/1.0/instances/${instanceName}`;
-    await this.client.patch(path, { profiles });
+      ? `/1.0/instances/${safePathSegment(instanceName)}?project=${encodeURIComponent(project)}`
+      : `/1.0/instances/${safePathSegment(instanceName)}`;
+    await this.completeOperation(await this.client.patch(path, { profiles }), project);
   }
 
   async getEvents(options: {
@@ -1213,88 +975,6 @@ export class LXDApi implements LXDApiLike {
     project?: string;
     timeoutMs?: number;
   } = {}): Promise<Array<LXDLifecycleEvent | LXDOperationEvent>> {
-    const types = options.types ?? ['lifecycle', 'operation'];
-    const project = options.project;
-    const timeoutMs = options.timeoutMs ?? 5000;
-
-    const typeParams = types.map(t => `type=${t}`).join('&');
-    const projectParam = project ? `&project=${encodeURIComponent(project)}` : '';
-    const queryString = `?${typeParams}${projectParam}`;
-
-    return new Promise((resolve, reject) => {
-      const events: Array<LXDLifecycleEvent | LXDOperationEvent> = [];
-      
-      const socketPath = (this.client as any).socketPath;
-      
-      const url = new URL('/1.0/events' + queryString, 'http://localhost');
-      
-      const requestOptions: http.RequestOptions = {
-        socketPath: socketPath,
-        method: 'GET',
-        path: url.pathname + url.search,
-        headers: {
-          'Upgrade': 'websocket',
-          'Connection': 'Upgrade',
-          'Sec-WebSocket-Version': '13',
-          'Sec-WebSocket-Key': generateWebSocketKey(),
-        },
-      };
-
-      const req = http.request(requestOptions, (res) => {
-        const upgrade = res.headers.upgrade;
-        if (upgrade !== 'websocket') {
-          reject(new Error('WebSocket upgrade failed'));
-          return;
-        }
-
-        const socket = (res as any).socket;
-        
-        const timeout = setTimeout(() => {
-          socket.end();
-        }, timeoutMs);
-
-        let buffer = Buffer.alloc(0);
-
-        socket.on('data', (chunk: Buffer) => {
-          buffer = Buffer.concat([buffer, chunk]);
-          
-          const content = buffer.toString('utf-8');
-          const lines = content.split('\n').filter(line => line.trim());
-          
-          for (const line of lines) {
-            try {
-              const event = JSON.parse(line);
-              events.push(event);
-            } catch {
-            }
-          }
-          buffer = Buffer.alloc(0);
-        });
-
-        socket.on('close', () => {
-          clearTimeout(timeout);
-          resolve(events);
-        });
-
-        socket.on('error', (err: Error) => {
-          clearTimeout(timeout);
-          reject(err);
-        });
-      });
-
-      req.on('error', (err) => {
-        reject(err);
-      });
-
-      req.end();
-    });
+    return collectEvents(this.client.getSocketPath(), options) as Promise<Array<LXDLifecycleEvent | LXDOperationEvent>>;
   }
-}
-
-function generateWebSocketKey(): string {
-  const bytes = Buffer.alloc(16);
-  for (let i = 0; i < 16; i++) {
-    bytes[i] = Math.floor(Math.random() * 256);
-  }
-  return bytes.toString('base64');
 }
