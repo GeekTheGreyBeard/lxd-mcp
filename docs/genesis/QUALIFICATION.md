@@ -41,7 +41,9 @@ unavailable integration prerequisites as completed integration coverage.
 ## Trust and operational limits
 This is a cluster-administration tool for trusted agents on the management network, not a tenant isolation boundary. Project allowlists prevent accidental routing outside scope, but LXD projects with shared images/profiles, unrestricted devices and configuration, and administrator commands can cross that conceptual boundary. Do not expose it to untrusted agents. Authentication is still required on loopback and the management network.
 
-Recorded exec output is accumulated by LXD on the daemon. The client bounds retrieval, but a timed-out command may continue running and recording output; it is not killed merely because this tool timed out. This remains a production qualification blocker for unattended arbitrary execution. No claim of safe untrusted command execution is made. Resource aliases containing slashes are intentionally rejected by the hardened path validator.
+An intermediate fail-closed mitigation now disables `exec_command` at the MCP and API boundary. No command is launched and there is no unsafe opt-in setting. Bounded streaming execution is under development; exec is not currently a qualified supported operation.
+
+The earlier recorded-output implementation accumulated output on the daemon. The client bounds retrieval, but a timed-out command may continue running and recording output; it is not killed merely because this tool timed out. This remains a production qualification blocker for unattended arbitrary execution. No claim of safe untrusted command execution is made. Resource aliases containing slashes are intentionally rejected by the hardened path validator.
 
 This work does not install a persistent service or integrate the management-server build. Live testing is against LXD 5.21, not a qualification of LXD 6.10.
 
@@ -53,4 +55,4 @@ This work does not install a persistent service or integrate the management-serv
 - This is NOT all-tool qualification: VM create/delete, image import/delete and project create/delete have not been live-tested in this fix pass. No changes were made to existing user workloads.
 - Temporary local SSH socket forwarding used the existing trusted genesis1 connection; no persistent credentials or services were deployed.
 
-Final live run: **40/40 checks passed**. Fixtures restored stopped; temporary regression snapshot/profile removed.
+Historical live run before exec was disabled: **40/40 checks passed**. Fixtures restored stopped; temporary regression snapshot/profile removed.
