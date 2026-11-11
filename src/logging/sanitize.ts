@@ -10,7 +10,8 @@ export const sanitizeObject = (obj: any): any => {
     'secret', 'api_key', 'apikey', 'key',
     'auth', 'authorization', 'credential',
     'private', 'private_key',
-    'config'
+    'config', 'command', 'commands', 'environment', 'env', 'content',
+    'stdout', 'stderr', 'output', 'body', 'data', 'cookie', 'set-cookie'
   ];
 
   // If input is not an object, return as-is

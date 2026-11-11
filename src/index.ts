@@ -4,6 +4,8 @@
  */
 
 import express from 'express';
+import { timingSafeEqual } from 'node:crypto';
+import { parseConfig } from './config.js';
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { StreamableHTTPServerTransport } from '@modelcontextprotocol/sdk/server/streamableHttp.js';
 import { LXDClient } from './lxd/client.js';
@@ -19,29 +21,13 @@ import { registerProfileTools } from './tools/profiles.js';
 import { registerFileTools } from './tools/files.js';
 import { registerLogsTools } from './tools/logs.js';
 import { registerMonitorTools } from './tools/monitor.js';
-import logger, { createLogger } from './logging/index.js';
+import { createLogger } from './logging/index.js';
 
 // Main async IIFE to handle async socket detection
 (async () => {
-  // Parse CLI arguments
-  const args = process.argv.slice(2);
-  const projectsArg = args.find(arg => arg.startsWith('--projects='));
-  const projects: string[] = projectsArg 
-    ? projectsArg.split('=')[1].split(',').map(p => p.trim()).filter(p => p.length > 0)
-    : [];
-
-  // Create component-specific loggers
   const log = createLogger('server');
   const mcpLog = createLogger('mcp');
-
-  // Configuration from environment
-  const config = {
-    host: process.env.HOST || '0.0.0.0',
-    port: parseInt(process.env.PORT || '3000', 10),
-    logLevel: process.env.LOG_LEVEL || 'info',
-    allowedProjects: projects,
-    accessToken: process.env.ACCESS_TOKEN || '',
-  };
+  const config = parseConfig(process.argv.slice(2));
 
   // Detect LXD socket path at startup
   let socketPath: string;
@@ -81,12 +67,6 @@ import logger, { createLogger } from './logging/index.js';
 
   // Bearer token authentication middleware
   function authMiddleware(req: express.Request, res: express.Response, next: express.NextFunction): void {
-    // If no access token is configured, skip authentication
-    if (!config.accessToken) {
-      log.debug('No access token configured, skipping auth');
-      return next();
-    }
-
     const authHeader = req.headers.authorization;
 
     if (!authHeader) {
@@ -102,7 +82,7 @@ import logger, { createLogger } from './logging/index.js';
     }
 
     const token = parts[1];
-    if (token !== config.accessToken) {
+    if (Buffer.byteLength(token) !== Buffer.byteLength(config.accessToken) || !timingSafeEqual(Buffer.from(token), Buffer.from(config.accessToken))) {
       res.status(401).json({ error: 'Unauthorized' });
       return;
     }
@@ -115,7 +95,7 @@ import logger, { createLogger } from './logging/index.js';
     const server = new McpServer(
       {
         name: 'lxd-mcp',
-        version: '1.0.0',
+        version: '1.1.0',
       },
       {
         capabilities: {
@@ -141,7 +121,9 @@ import logger, { createLogger } from './logging/index.js';
 
   // Create Express app
   const app = express();
-  app.use(express.json());
+  app.disable('x-powered-by');
+  app.use('/mcp', authMiddleware);
+  app.use(express.json({ limit: '24mb' }));
 
   // Request logging middleware
   app.use((req, res, next) => {
@@ -157,12 +139,13 @@ import logger, { createLogger } from './logging/index.js';
   });
 
   // MCP endpoint using Streamable HTTP
-  app.post('/mcp', authMiddleware, async (req, res) => {
+  app.post('/mcp', async (req, res) => {
     const server = createMcpServer();
     const transport = new StreamableHTTPServerTransport({
       sessionIdGenerator: undefined, // stateless
     });
     
+    res.on('close', () => { void transport.close(); void server.close(); });
     try {
       await server.connect(transport);
       await transport.handleRequest(req, res, req.body);
@@ -175,12 +158,13 @@ import logger, { createLogger } from './logging/index.js';
   });
 
   // Also support SSE endpoint for backwards compatibility
-  app.get('/mcp', authMiddleware, async (req, res) => {
+  app.get('/mcp', async (req, res) => {
     const server = createMcpServer();
     const transport = new StreamableHTTPServerTransport({
       sessionIdGenerator: undefined, // stateless
     });
     
+    res.on('close', () => { void transport.close(); void server.close(); });
     try {
       await server.connect(transport);
       await transport.handleRequest(req, res);
@@ -207,6 +191,10 @@ import logger, { createLogger } from './logging/index.js';
     }
   });
 
+  server.requestTimeout = 120_000;
+  server.headersTimeout = 30_000;
+  server.keepAliveTimeout = 5_000;
+
   server.on('error', (err) => {
     log.error({ error: err.message }, 'Server error');
   });
@@ -225,4 +213,8 @@ import logger, { createLogger } from './logging/index.js';
       process.exit(0);
     });
   });
-})();
+})().catch(() => {
+  // Configuration errors must not accidentally include secret values.
+  console.error('LXD MCP startup failed. Check configuration and socket access.');
+  process.exitCode = 1;
+});

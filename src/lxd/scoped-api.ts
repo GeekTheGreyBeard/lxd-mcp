@@ -40,14 +40,14 @@ export interface LXDApiLike {
 
   // Image operations
   listImages(project?: string, queryParams?: LXDQueryParams): Promise<LXDPaginatedResult<LXDImage>>;
-  getImage(fingerprint: string): Promise<LXDImage>;
-  deleteImage(fingerprint: string): Promise<void>;
+  getImage(fingerprint: string, project?: string): Promise<LXDImage>;
+  deleteImage(fingerprint: string, project?: string): Promise<void>;
 
   // Alias operations
-  listAliases(queryParams?: LXDQueryParams): Promise<LXDPaginatedResult<LXDAlias>>;
-  getAlias(name: string): Promise<LXDAlias>;
-  createAlias(name: string, description: string, target: string): Promise<void>;
-  deleteAlias(name: string): Promise<void>;
+  listAliases(queryParams?: LXDQueryParams, project?: string): Promise<LXDPaginatedResult<LXDAlias>>;
+  getAlias(name: string, project?: string): Promise<LXDAlias>;
+  createAlias(name: string, description: string, target: string, project?: string): Promise<void>;
+  deleteAlias(name: string, project?: string): Promise<void>;
 
   // Profile operations
   listProfiles(project?: string, queryParams?: LXDQueryParams): Promise<LXDPaginatedResult<LXDProfile>>;
@@ -154,7 +154,7 @@ export class ScopedLXDApi implements LXDApiLike {
 
   constructor(config: ScopedLXDApiConfig) {
     this.api = config.api;
-    this.allowedProjects = config.allowedProjects;
+    this.allowedProjects = [...config.allowedProjects];
   }
 
   /**
@@ -257,30 +257,28 @@ export class ScopedLXDApi implements LXDApiLike {
     return this.api.listImages(validatedProject, queryParams);
   }
 
-  async getImage(fingerprint: string): Promise<LXDImage> {
-    // Images can be accessed across projects, but we can restrict to allowed projects
-    // For now, we'll keep this unrestricted as images are typically global
-    return this.api.getImage(fingerprint);
+  async getImage(fingerprint: string, project?: string): Promise<LXDImage> {
+    return this.api.getImage(fingerprint, validateProject(project, this.allowedProjects));
   }
 
-  async deleteImage(fingerprint: string): Promise<void> {
-    return this.api.deleteImage(fingerprint);
+  async deleteImage(fingerprint: string, project?: string): Promise<void> {
+    return this.api.deleteImage(fingerprint, validateProject(project, this.allowedProjects));
   }
 
-  async listAliases(queryParams?: LXDQueryParams): Promise<LXDPaginatedResult<LXDAlias>> {
-    return this.api.listAliases(queryParams);
+  async listAliases(queryParams?: LXDQueryParams, project?: string): Promise<LXDPaginatedResult<LXDAlias>> {
+    return this.api.listAliases(queryParams, validateProject(project, this.allowedProjects));
   }
 
-  async getAlias(name: string): Promise<LXDAlias> {
-    return this.api.getAlias(name);
+  async getAlias(name: string, project?: string): Promise<LXDAlias> {
+    return this.api.getAlias(name, validateProject(project, this.allowedProjects));
   }
 
-  async createAlias(name: string, description: string, target: string): Promise<void> {
-    return this.api.createAlias(name, description, target);
+  async createAlias(name: string, description: string, target: string, project?: string): Promise<void> {
+    return this.api.createAlias(name, description, target, validateProject(project, this.allowedProjects));
   }
 
-  async deleteAlias(name: string): Promise<void> {
-    return this.api.deleteAlias(name);
+  async deleteAlias(name: string, project?: string): Promise<void> {
+    return this.api.deleteAlias(name, validateProject(project, this.allowedProjects));
   }
 
   // Profile operations with project validation
@@ -437,7 +435,7 @@ export class ScopedLXDApi implements LXDApiLike {
     project?: string;
     timeoutMs?: number;
   }) {
-    const validatedProject = options?.project ? validateProject(options.project, this.allowedProjects) : undefined;
+    const validatedProject = validateProject(options?.project, this.allowedProjects);
     return this.api.getEvents({ ...options, project: validatedProject });
   }
 }

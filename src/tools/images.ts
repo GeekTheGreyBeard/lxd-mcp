@@ -20,7 +20,7 @@ export function registerImageTools(server: McpServer, api: LXDApiLike, log: Logg
       title: 'List LXD Images',
       description: 'List all LXD images with optional pagination and filtering',
       inputSchema: z.object({
-        project: z.string().optional().describe('LXD project name (optional)'),
+        project: z.string().optional().describe('LXD project; required when project restrictions are configured'),
         limit: z.number().min(1).max(500).optional().describe('Maximum number of images to return (default: 100, max: 500)'),
         offset: z.number().min(0).optional().describe('Number of images to skip (for pagination)'),
         filter: z.string().optional().describe('OData filter expression (e.g., \'type eq "container"\', \'public eq true\')'),
@@ -57,13 +57,14 @@ export function registerImageTools(server: McpServer, api: LXDApiLike, log: Logg
       title: 'Get LXD Image',
       description: 'Get detailed information about a specific LXD image',
       inputSchema: z.object({
+        project: z.string().optional().describe('LXD project; required when project restrictions are configured'),
         fingerprint: z.string().describe('Image fingerprint or alias'),
       }),
     },
-    async (args: { fingerprint: string }) => {
+    async (args: { project?: string; fingerprint: string }) => {
       log.info({ fingerprint: args.fingerprint }, 'Getting image');
       try {
-        const image = await api.getImage(args.fingerprint);
+        const image = await api.getImage(args.fingerprint, args.project);
         log.info({ fingerprint: args.fingerprint }, 'Image retrieved successfully');
         return { content: [{ type: 'text', text: formatImage(image) }] };
       } catch (error) {
@@ -83,13 +84,14 @@ export function registerImageTools(server: McpServer, api: LXDApiLike, log: Logg
       title: 'Delete LXD Image',
       description: 'Delete an LXD image',
       inputSchema: z.object({
+        project: z.string().optional().describe('LXD project; required when project restrictions are configured'),
         fingerprint: z.string().describe('Image fingerprint'),
       }),
     },
-    async (args: { fingerprint: string }) => {
+    async (args: { project?: string; fingerprint: string }) => {
       log.info({ fingerprint: args.fingerprint }, 'Deleting image');
       try {
-        await api.deleteImage(args.fingerprint);
+        await api.deleteImage(args.fingerprint, args.project);
         log.info({ fingerprint: args.fingerprint }, 'Image deleted successfully');
         return { content: [{ type: 'text', text: JSON.stringify({ success: true, message: `Image ${args.fingerprint} deleted` }) }] };
       } catch (error) {
@@ -109,18 +111,19 @@ export function registerImageTools(server: McpServer, api: LXDApiLike, log: Logg
       title: 'List Image Aliases',
       description: 'List all LXD image aliases with optional pagination',
       inputSchema: z.object({
+        project: z.string().optional().describe('LXD project; required when project restrictions are configured'),
         limit: z.number().min(1).max(500).optional().describe('Maximum number of aliases to return (default: 100, max: 500)'),
         offset: z.number().min(0).optional().describe('Number of aliases to skip (for pagination)'),
       }),
     },
-    async (args: { limit?: number; offset?: number }) => {
+    async (args: { project?: string; limit?: number; offset?: number }) => {
       log.info({ limit: args.limit, offset: args.offset }, 'Listing aliases');
       try {
         const queryParams = {
           limit: args.limit,
           offset: args.offset,
         };
-        const result = await api.listAliases(queryParams);
+        const result = await api.listAliases(queryParams, args.project);
         log.info({ count: result.items.length, pagination: result.pagination }, 'Aliases listed successfully');
         return {
           content: [{ type: 'text', text: formatAliases(result.items) }],
@@ -142,13 +145,14 @@ export function registerImageTools(server: McpServer, api: LXDApiLike, log: Logg
       title: 'Get Image Alias',
       description: 'Get information about a specific image alias',
       inputSchema: z.object({
+        project: z.string().optional().describe('LXD project; required when project restrictions are configured'),
         name: z.string().describe('Alias name'),
       }),
     },
-    async (args: { name: string }) => {
+    async (args: { project?: string; name: string }) => {
       log.info({ name: args.name }, 'Getting alias');
       try {
-        const alias = await api.getAlias(args.name);
+        const alias = await api.getAlias(args.name, args.project);
         log.info({ name: args.name }, 'Alias retrieved successfully');
         return { content: [{ type: 'text', text: formatAlias(alias) }] };
       } catch (error) {
@@ -168,15 +172,16 @@ export function registerImageTools(server: McpServer, api: LXDApiLike, log: Logg
       title: 'Create Image Alias',
       description: 'Create a new image alias',
       inputSchema: z.object({
+        project: z.string().optional().describe('LXD project; required when project restrictions are configured'),
         name: z.string().describe('Alias name'),
         description: z.string().describe('Alias description'),
         target: z.string().describe('Target image fingerprint'),
       }),
     },
-    async (args: { name: string; description: string; target: string }) => {
+    async (args: { project?: string; name: string; description: string; target: string }) => {
       log.info({ name: args.name, target: args.target }, 'Creating alias');
       try {
-        await api.createAlias(args.name, args.description, args.target);
+        await api.createAlias(args.name, args.description, args.target, args.project);
         log.info({ name: args.name }, 'Alias created successfully');
         return { content: [{ type: 'text', text: JSON.stringify({ success: true, message: `Alias ${args.name} created` }) }] };
       } catch (error) {
@@ -196,13 +201,14 @@ export function registerImageTools(server: McpServer, api: LXDApiLike, log: Logg
       title: 'Delete Image Alias',
       description: 'Delete an image alias',
       inputSchema: z.object({
+        project: z.string().optional().describe('LXD project; required when project restrictions are configured'),
         name: z.string().describe('Alias name'),
       }),
     },
-    async (args: { name: string }) => {
+    async (args: { project?: string; name: string }) => {
       log.info({ name: args.name }, 'Deleting alias');
       try {
-        await api.deleteAlias(args.name);
+        await api.deleteAlias(args.name, args.project);
         log.info({ name: args.name }, 'Alias deleted successfully');
         return { content: [{ type: 'text', text: JSON.stringify({ success: true, message: `Alias ${args.name} deleted` }) }] };
       } catch (error) {
