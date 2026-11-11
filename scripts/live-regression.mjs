@@ -19,7 +19,7 @@ async function call(name,args={},expectError=false,check){
  const start=Date.now();let response;try{response=await rpc('tools/call',{name,arguments:args});}catch(e){response={error:String(e)}}
  let payload; try{payload=JSON.parse(response.data?.result?.content?.[0]?.text)}catch{}
  const failed=!!(payload?.success===false||response.error||response.data?.error||response.data?.result?.isError||response.status!==200);
- let pass=expectError?failed:!failed;if(check) pass=pass&&check(JSON.stringify(response));
+ let pass=expectError?failed:!failed;if(check) pass=pass&&check(JSON.stringify(response),payload);
  results.push({name,args,expectError,pass,ms:Date.now()-start,response});fs.writeFileSync(out,JSON.stringify(results,null,2));console.log(`${pass?'PASS':'FAIL'} ${name}`);return response;
 }
 try{
@@ -35,8 +35,9 @@ try{
  await call('list_snapshots',{project,name:'eval-container'});
  await call('start_instance',{project,name:'eval-container'});
  await call('get_instance_state',{project,name:'eval-container'},false,s=>s.includes('Running'));
- await call('exec_command',{project,container:'eval-container',command:'printf MCP_TEST_OUTPUT; printf MCP_STDERR >&2; exit 7',timeoutMs:5000},true,s=>s.includes('MCP_TEST_OUTPUT')&&s.includes('MCP_STDERR')&&s.includes('7'));
- await call('exec_command',{project,container:'eval-container',command:'sleep 3',timeoutMs:1000},true);
+ await call('exec_command',{project,container:'eval-container',command:'printf MCP_SUCCESS',timeoutMs:5000},false,s=>s.includes('MCP_SUCCESS'));
+ await call('exec_command',{project,container:'eval-container',command:'printf MCP_TEST_OUTPUT; printf MCP_STDERR >&2; exit 7',timeoutMs:5000},true,s=>s.includes('MCP_TEST_OUTPUT')&&s.includes('MCP_STDERR')&&s.includes('7')&&!s.includes('outputError'));
+ await call('exec_command',{project,container:'eval-container',command:'sleep 3',timeoutMs:1000},true,(_s,p)=>p?.timedOut===true&&p?.exitCode===137&&p?.processMayStillRun===false);
  await call('lxd_config_set',{project,container:'eval-container',config:{'user.genesis.regression':'pass'}});
  await call('lxd_config_get',{project,container:'eval-container',key:'user.genesis.regression'});
  await call('lxd_config_show',{project,container:'eval-container'});

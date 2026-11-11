@@ -51,9 +51,9 @@ export async function executeStreamingCommand(client: LXDClient, instance: strin
       if(!opened) reject(new Error(`Exec channel ${fd} closed during handshake`));
     });
     if (fd==='1' || fd==='2') ws.on('message', (data, isBinary) => {
-      if (!isBinary) { stop(`Exec output channel ${fd} sent unexpected text frame`); return; }
       const chunk = Buffer.isBuffer(data) ? data : Buffer.from(data as ArrayBuffer);
-      if (chunk.length === 0 && isBinary) { eof.add(fd); return; } // LXD explicit binary stream EOF.
+      if (chunk.length === 0) { eof.add(fd); return; } // LXD sends empty TEXT EOF; binary EOF supported too.
+      if (!isBinary) { stop(`Exec output channel ${fd} sent unexpected text frame`); return; }
       if (eof.has(fd)) { stop(`Exec output channel ${fd} sent data after EOF`); return; }
       const available = Math.max(0, 8*1024*1024-bytes);
       if (available) chunks[fd].push(chunk.subarray(0,available));
