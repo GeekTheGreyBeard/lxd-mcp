@@ -7,7 +7,7 @@ import {WebSocketServer} from 'ws';
 import {executeStreamingCommand} from '../../src/lxd/exec-stream.js';
 const cleanup: Array<()=>Promise<void>>=[];
 afterEach(async()=>{while(cleanup.length) await cleanup.pop()!();});
-async function fixture(mode:'exit'|'timeout'|'cap'|'reject') {
+async function fixture(mode:'exit'|'timeout'|'cap'|'reject'|'abrupt'|'eof') {
  const dir=await mkdtemp(join(tmpdir(),'exec-stream-')), path=join(dir,'lxd.sock');
  const http=createServer();const wss=new WebSocketServer({server:http});
  await new Promise<void>(r=>http.listen(path,r));
@@ -18,6 +18,8 @@ async function fixture(mode:'exit'|'timeout'|'cap'|'reject') {
   if(fd==='control')socket.on('message',data=>{signal=JSON.parse(data.toString()).signal;code=137;complete=true;channels['1']?.close();channels['2']?.close();});
   if(fd==='0'){
    if(mode==='exit'){channels['1'].send('hello');channels['2'].send('err');complete=true;channels['1'].close();channels['2'].close();}
+   if(mode==='eof'){complete=true;code=0;channels['1'].send(Buffer.alloc(0),()=>channels['1'].terminate());channels['2'].send(Buffer.alloc(0),()=>channels['2'].terminate());}
+   if(mode==='abrupt'){complete=true;code=0;channels['1'].terminate();channels['2'].close();}
    if(mode==='cap'){for(let i=0;i<10;i++)channels['1'].send(Buffer.alloc(900000,65));}
   }
  });
@@ -45,4 +47,14 @@ it('fails before connecting incomplete channel metadata',async()=>{
 it('does not release stdin launch barrier after output channel closes', async()=>{
  const f=await fixture('reject');const result=await executeStreamingCommand(f.client as any,'test','true',{timeoutMs:1000});
  expect(f.order).not.toContain('0');expect(result).toMatchObject({exit_code:null,process_may_still_run:false});
+});
+
+it('reports truncated output after abnormal close despite exit zero', async()=>{
+ const f=await fixture('abrupt'); const r=await executeStreamingCommand(f.client as any,'test','true',{timeoutMs:1000});
+ expect(r.exit_code).toBe(0); expect(r.output_error).toContain('abnormally');
+});
+
+it('accepts LXD binary EOF before transport teardown', async()=>{
+ const f=await fixture('eof'); const r=await executeStreamingCommand(f.client as any,'test','true',{timeoutMs:1000});
+ expect(r.exit_code).toBe(0); expect(r.output_error).toBeUndefined();
 });

@@ -30,6 +30,7 @@ export async function executeStreamingCommand(client: LXDClient, instance: strin
   let bytes = 0, failure: string | undefined, launched = false, killed = false, deadlineExpired = false;
   let control: WebSocket | undefined;
   const closed = new Set<string>();
+  const eof = new Set<string>();
   const stop = (reason: string) => {
     failure ??= reason;
     if (launched && !killed && control?.readyState === WebSocket.OPEN) {
@@ -44,9 +45,14 @@ export async function executeStreamingCommand(client: LXDClient, instance: strin
     ws.on('open', () => {opened=true; resolve(ws);});
     ws.on('error', () => {stop(`Exec channel ${fd} failed`); if(!opened) reject(new Error(`Exec channel ${fd} handshake failed`));});
     ws.on('unexpected-response', (_req,res) => {res.resume(); stop(`Exec channel ${fd} upgrade rejected`); reject(new Error(`Exec channel ${fd} upgrade rejected`));});
-    ws.on('close', () => {closed.add(fd); if(!opened) reject(new Error(`Exec channel ${fd} closed during handshake`));});
-    if (fd==='1' || fd==='2') ws.on('message', data => {
+    ws.on('close', code => {
+      closed.add(fd);
+      if ((fd === '1' || fd === '2') && code !== 1000 && !eof.has(fd)) stop(`Exec output channel ${fd} closed abnormally (${code}); output may be truncated`);
+      if(!opened) reject(new Error(`Exec channel ${fd} closed during handshake`));
+    });
+    if (fd==='1' || fd==='2') ws.on('message', (data, isBinary) => {
       const chunk = Buffer.isBuffer(data) ? data : Buffer.from(data as ArrayBuffer);
+      if (chunk.length === 0 && isBinary) { eof.add(fd); return; } // LXD explicit binary stream EOF.
       const available = Math.max(0, 8*1024*1024-bytes);
       if (available) chunks[fd].push(chunk.subarray(0,available));
       bytes += chunk.length;
@@ -61,7 +67,9 @@ export async function executeStreamingCommand(client: LXDClient, instance: strin
     if(failure || control.readyState !== WebSocket.OPEN || closed.has('1') || closed.has('2')) throw new Error(failure ?? 'Exec channels closed before launch');
     launched = true; // Final upgrade can launch even if its response is lost.
     timer = setTimeout(() => {deadlineExpired=true; stop('Exec deadline exceeded');}, ms);
-    const stdin = await connect('0'); stdin.close();
+    const stdin = await connect('0');
+    if (failure) { killed = false; stop(failure); } // Re-send after final handshake if failure raced launch.
+    stdin.close();
     const terminalDeadline = Date.now()+ms+5000;
     while(Date.now()<terminalDeadline) {
       let op: any;
