@@ -52,3 +52,5 @@ This work does not install a persistent service or integrate the management-serv
 - Live harness exercises forty checks against disposable genesis-mcp-eval fixtures, covering cluster reporting, env project restrictions, injection rejection, instance lifecycle, exec exit/output and timeout honesty, event stream, config/file/log tools, profiles and snapshots.
 - This is NOT all-tool qualification: VM create/delete, image import/delete and project create/delete have not been live-tested in this fix pass. No changes were made to existing user workloads.
 - Temporary local SSH socket forwarding used the existing trusted genesis1 connection; no persistent credentials or services were deployed.
+
+Final live run: **40/40 checks passed**. Fixtures restored stopped; temporary regression snapshot/profile removed.
