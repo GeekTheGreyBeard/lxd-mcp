@@ -4,6 +4,7 @@ export interface ExecResult {
   exit_code: number | null;
   stdout: string;
   stderr: string;
+  termination_scope?: 'exec-command-only';
   output_error?: string;
   timed_out?: boolean;
   operation_id?: string;

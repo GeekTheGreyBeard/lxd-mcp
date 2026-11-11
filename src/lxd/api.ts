@@ -2,7 +2,8 @@
  * LXD API wrapper for common operations
  */
 
-import { executeRecordedCommand, type ExecResult } from './exec-operation.js';
+import { type ExecResult } from './exec-operation.js';
+import { executeStreamingCommand } from './exec-stream.js';
 import { collectEvents } from './event-stream.js';
 import { safePathSegment, resourceName } from './path.js';
 import { LXDClient, LXDResponse, LXDQueryParams, LXDPaginatedResponse } from './client.js';
@@ -291,8 +292,13 @@ export class LXDApi implements LXDApiLike {
     if (!id) throw new Error('LXD asynchronous response omitted operation ID; outcome unknown');
     const params = new URLSearchParams({ timeout: '120' });
     if (project) params.set('project', project);
-    const result = await this.client.get<{ status_code: number; status: string; err?: string }>(
-      `/1.0/operations/${safePathSegment(id)}/wait?${params}`, undefined, { timeout: 125000 });
+    let result: LXDResponse<{ status_code: number; status: string; err?: string }>;
+    try {
+      result = await this.client.get(
+        `/1.0/operations/${safePathSegment(id)}/wait?${params}`, undefined, { timeout: 125000 });
+    } catch (error) {
+      throw new Error(`LXD operation ${id}: outcome unknown after wait request failed; inspect the operation before retrying. ${error instanceof Error ? error.message : String(error)}`);
+    }
     if (result.metadata.status_code !== 200 || result.metadata.err) {
       throw new Error(`LXD operation did not succeed: ${result.metadata.err || result.metadata.status || result.metadata.status_code}; operation ${id}`);
     }
@@ -597,7 +603,7 @@ export class LXDApi implements LXDApiLike {
     options: { user?: number; group?: number; cwd?: string; env?: Record<string, string>; timeoutMs?: number } = {},
     project?: string
   ): Promise<LXDExecResponse> {
-    return executeRecordedCommand(this.client, instanceName, command, options, project);
+    return executeStreamingCommand(this.client, instanceName, command, options, project);
   }
 
   async listExecOutputLogs(instanceName: string, project?: string): Promise<LXDExecOutputLogFile[]> {
