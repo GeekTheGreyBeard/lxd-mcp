@@ -49,10 +49,15 @@ This work does not install a persistent service or integrate the management-serv
 
 ## November 11 hardening verification
 - TypeScript build succeeds.
-- Complete unit suite: 224 tests across 15 files pass, including real local Unix-socket transport tests (run with reviewed socket permission).
+- Complete unit suite: 236 tests across 16 files pass, including real local Unix-socket transport tests (run with reviewed socket permission).
 - Dependency audit: zero known vulnerabilities after lockfile/tsx refresh and maintained ws transport installation.
 - Live harness exercises forty checks against disposable genesis-mcp-eval fixtures, covering cluster reporting, env project restrictions, injection rejection, instance lifecycle, exec exit/output and timeout honesty, event stream, config/file/log tools, profiles and snapshots.
-- This is NOT all-tool qualification: VM create/delete, image import/delete and project create/delete have not been live-tested in this fix pass. No changes were made to existing user workloads.
+- Extended qualification passed actual container/VM creation and deletion, VM boot/Running/stop, image/alias lifecycle and scoped image listing. See [extended evidence](EXTENDED-QUALIFICATION.md). Project create/delete and image import are not exposed MCP tools; raw image publication was fixture preparation, not claimed MCP coverage. No existing user workloads were changed.
 - Temporary local SSH socket forwarding used the existing trusted genesis1 connection; no persistent credentials or services were deployed.
 
-Current live rerun after bounded streaming exec wiring: **40/40 checks passed**. Fixtures restored stopped; temporary regression snapshot/profile removed.
+Current live rerun after bounded streaming exec wiring: **41/41 checks passed**. Fixtures restored stopped; temporary regression snapshot/profile removed.
+
+## Interpretation
+Coverage establishes tested behavior, not a guarantee for every input, daemon version, topology or outage. The fork is a candidate for the management-server design, with pinned dependencies and these limits carried forward; no persistent deployment has been performed. Run compatibility qualification again on the selected Genesis v2 stack.
+
+Final live evidence covers all 42 registered tools with at least one successful scoped operation across the core and extended runs. This is representative tool coverage, not exhaustive parameter/failure-matrix coverage. The final strict exec checks require positive exit0, exact exit7 output without outputError, and timed-out exit137 with verified terminal status.

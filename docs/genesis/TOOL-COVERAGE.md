@@ -1,0 +1,46 @@
+# Representative live tool coverage
+
+All 42 registered tools have a successful scoped live operation in the core41-check run, extended18-check run, and separate positive image-list check. This is not exhaustive argument, failure, version or topology coverage. Project create/delete and image import are not exposed tools.
+
+- `add_profile_device`: passed
+- `add_profile_to_instance`: passed
+- `create_alias`: passed
+- `create_instance`: passed
+- `create_profile`: passed
+- `create_snapshot`: passed
+- `delete_alias`: passed
+- `delete_image`: passed
+- `delete_instance`: passed
+- `delete_profile`: passed
+- `delete_snapshot`: passed
+- `exec_command`: passed
+- `get_alias`: passed
+- `get_cluster_info`: passed
+- `get_image`: passed
+- `get_instance`: passed
+- `get_instance_state`: passed
+- `get_profile`: passed
+- `get_project`: passed
+- `get_server_info`: passed
+- `get_server_resources`: passed
+- `list_aliases`: passed
+- `list_images`: passed
+- `list_instances`: passed
+- `list_profiles`: passed
+- `list_projects`: passed
+- `list_snapshots`: passed
+- `lxd_config_get`: passed
+- `lxd_config_set`: passed
+- `lxd_config_show`: passed
+- `lxd_file_pull`: passed
+- `lxd_file_push`: passed
+- `lxd_logs`: passed
+- `lxd_monitor`: passed
+- `remove_profile_device`: passed
+- `remove_profile_from_instance`: passed
+- `restart_instance`: passed
+- `restore_snapshot`: passed
+- `set_profile_config`: passed
+- `set_profile_device`: passed
+- `start_instance`: passed
+- `stop_instance`: passed
