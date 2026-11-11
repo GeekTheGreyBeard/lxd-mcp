@@ -10,7 +10,9 @@ export interface ExecResult {
   process_may_still_run?: boolean;
 }
 
-/** Record-output exec uses operation.metadata.return and operation.metadata.output.
+/** INTERNAL REGRESSION HELPER ONLY: not wired to LXDApi or any MCP tool.
+ * Unsafe for production because daemon output is not bounded.
+ * Record-output exec uses operation.metadata.return and operation.metadata.output.
  * Never guess an exit code, borrow another operation's logs, or claim a timed-out
  * process was killed. A timeout only ends this caller's wait.
  */
