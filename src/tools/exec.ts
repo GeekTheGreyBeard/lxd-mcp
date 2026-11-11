@@ -7,7 +7,7 @@ import { z } from 'zod';
 import { LXDInstance } from '../lxd/api.js';
 import { LXDError, LXDNotFoundError } from '../lxd/errors.js';
 import { createLogger } from '../logging/index.js';
-import { sanitizeObject, detectSensitiveEnvVars } from '../logging/sanitize.js';
+import { detectSensitiveEnvVars } from '../logging/sanitize.js';
 import type { Logger } from 'pino';
 import type { LXDApiLike } from '../lxd/scoped-api.js';
 
@@ -56,19 +56,12 @@ export function registerExecTools(server: McpServer, api: LXDApiLike, log: Logge
         'Commands are automatically wrapped in /bin/sh -c to support shell features like pipes, redirects, and environment variables.',
         'Note: This tool only works with containers, not virtual machines.',
         '',
-        '### Asynchronous Execution Pattern:',
-        '- Short-running commands (e.g., `ls /tmp`, `cat file.txt`) return results immediately in stdout/stderr.',
-        '- Long-running commands (e.g., starting a server with `python3 -m http.server 8000`) execute asynchronously.',
-        '- For async commands: the tool returns immediately with exit code and output.',
-        '- The LLM should poll for completion if waiting for server startup (recommended: 500ms interval).',
-        '',
-        '### Timeout Handling:',
-        '- Default timeout: 30000ms (30 seconds)',
-        '- Maximum timeout: 120000ms (2 minutes)',
-        '- If timeout occurs, exit code is 137 and stderr contains timeout message.',
+        'Waits for the command operation to complete, returning its verified exit status and recorded output.',
+        'On timeout, exitCode is null and processMayStillRun is true. A timeout does not kill the command.',
+        'Commands exiting 137 are not necessarily timeouts.',
         '',
         '### Security Note:',
-        'Environment variables containing sensitive data (such as passwords, API keys, tokens) will be sanitized in logs and warnings will be issued when detected.',
+        'Environment values are not logged. Sensitive variable names trigger warnings. Recorded command output is retained by LXD and may contain secrets.',
         '',
         'Parameters:',
         '- container: Name of the container',
@@ -103,8 +96,7 @@ export function registerExecTools(server: McpServer, api: LXDApiLike, log: Logge
     }) => {
       const { container, command, user, group, cwd, env, timeoutMs, project } = args;
       
-      // Sanitize environment variables once at the start - reuse throughout the function
-      const sanitizedEnv = env ? sanitizeObject(env) : undefined;
+      // Do not log environment values, including innocuously named secrets.
       
       // Detect sensitive environment variables
       const { hasSensitive, warning } = detectSensitiveEnvVars(env);
@@ -147,29 +139,29 @@ export function registerExecTools(server: McpServer, api: LXDApiLike, log: Logge
         
         // Format the response
         const response = {
-          success: result.exit_code === 0,
+          success: result.exit_code === 0 && !result.output_error,
+          outputError: result.output_error,
           exitCode: result.exit_code,
           stdout: result.stdout,
           stderr: result.stderr,
-          timedOut: result.exit_code === 137,
+          timedOut: result.timed_out === true,
+          operationId: result.operation_id,
+          processMayStillRun: result.process_may_still_run === true,
         };
-        
-        // Include timeout message in stderr if timed out
-        if (response.timedOut) {
-          response.stderr += `\n[Command timed out after ${timeoutMs}ms - process was killed]`;
-        }
         
         log.debug({ 
           container, 
           exitCode: result.exit_code,
           stdoutLength: result.stdout.length,
           stderrLength: result.stderr.length,
-          timedOut: result.exit_code === 137,
+          timedOut: result.timed_out === true,
+          operationId: result.operation_id,
+          processMayStillRun: result.process_may_still_run === true,
           project,
-          env: sanitizedEnv
         }, 'Command executed successfully');
         
         return {
+          isError: !response.success,
           content: [{ type: 'text', text: JSON.stringify(response, null, 2) }],
         };
       } catch (error) {
@@ -179,9 +171,9 @@ export function registerExecTools(server: McpServer, api: LXDApiLike, log: Logge
             container, 
             error: error.message,
             project,
-            env: sanitizedEnv
-          }, 'Container not found during execution');
+            }, 'Container not found during execution');
           return {
+            isError: true,
             content: [{ 
               type: 'text', 
               text: JSON.stringify({
@@ -198,9 +190,9 @@ export function registerExecTools(server: McpServer, api: LXDApiLike, log: Logge
             container, 
             error: error.message,
             project,
-            env: sanitizedEnv
-          }, 'LXD API error during execution');
+            }, 'LXD API error during execution');
           return {
+            isError: true,
             content: [{ 
               type: 'text', 
               text: JSON.stringify({
@@ -217,9 +209,9 @@ export function registerExecTools(server: McpServer, api: LXDApiLike, log: Logge
             container, 
             error: error.message,
             project,
-            env: sanitizedEnv
-          }, 'Command execution error');
+            }, 'Command execution error');
           return {
+            isError: true,
             content: [{ 
               type: 'text', 
               text: JSON.stringify({
@@ -235,9 +227,9 @@ export function registerExecTools(server: McpServer, api: LXDApiLike, log: Logge
           container, 
           error: 'Unknown error occurred',
           project,
-          env: sanitizedEnv
         }, 'Unknown error during execution');
         return {
+          isError: true,
           content: [{ 
             type: 'text', 
             text: JSON.stringify({

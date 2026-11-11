@@ -20,7 +20,7 @@ export function registerMonitorTools(server: McpServer, api: LXDApiLike, logger:
       inputSchema: z.object({
         types: z.array(z.enum(['lifecycle', 'operation'])).optional().describe('Event types to monitor: "lifecycle" (instance-started, etc.) and/or "operation" (image-pull, etc.). Default: both'),
         project: z.string().optional().describe('LXD project name (optional)'),
-        timeout: z.number().optional().describe('Timeout in milliseconds to wait for events (default: 5000, max: 30000)'),
+        timeout: z.number().int().min(1000).max(30000).optional().describe('Timeout in milliseconds to wait for events (default: 5000, max: 30000)'),
       }),
     },
     async (args: { 
